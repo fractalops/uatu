@@ -34,14 +34,14 @@ def baseline_snapshot():
         load_15min=1.5,
         process_count=150,
         top_cpu_processes=[
-            ProcessInfo(
-                pid=100, name="normal_proc", user="test", cpu_percent=5.0, memory_mb=100.0
-            )
+            ProcessInfo(pid=100, name="normal_proc", user="test", cpu_percent=5.0, memory_mb=100.0),
+            # Include test processes at baseline levels
+            ProcessInfo(pid=999, name="cpu_hog", user="test", cpu_percent=10.0, memory_mb=100.0),
+            ProcessInfo(pid=888, name="critical_proc", user="test", cpu_percent=10.0, memory_mb=100.0),
         ],
         top_memory_processes=[
-            ProcessInfo(
-                pid=200, name="mem_proc", user="test", cpu_percent=2.0, memory_mb=500.0
-            )
+            ProcessInfo(pid=200, name="mem_proc", user="test", cpu_percent=2.0, memory_mb=500.0),
+            ProcessInfo(pid=777, name="mem_hog", user="test", cpu_percent=5.0, memory_mb=800.0),
         ],
     )
 
@@ -71,11 +71,7 @@ def test_cpu_spike_detected(detector, state_with_baseline):
         load_5min=2.5,
         load_15min=2.0,
         process_count=150,
-        top_cpu_processes=[
-            ProcessInfo(
-                pid=999, name="cpu_hog", user="test", cpu_percent=50.0, memory_mb=100.0
-            )
-        ],
+        top_cpu_processes=[ProcessInfo(pid=999, name="cpu_hog", user="test", cpu_percent=50.0, memory_mb=100.0)],
         top_memory_processes=[],
     )
 
@@ -106,11 +102,7 @@ def test_cpu_critical_threshold(detector, state_with_baseline):
         load_5min=4.5,
         load_15min=4.0,
         process_count=150,
-        top_cpu_processes=[
-            ProcessInfo(
-                pid=888, name="critical_proc", user="test", cpu_percent=80.0, memory_mb=100.0
-            )
-        ],
+        top_cpu_processes=[ProcessInfo(pid=888, name="critical_proc", user="test", cpu_percent=80.0, memory_mb=100.0)],
         top_memory_processes=[],
     )
 
@@ -135,11 +127,7 @@ def test_memory_spike_detected(detector, state_with_baseline):
         load_15min=1.5,
         process_count=150,
         top_cpu_processes=[],
-        top_memory_processes=[
-            ProcessInfo(
-                pid=777, name="mem_hog", user="test", cpu_percent=5.0, memory_mb=3000.0
-            )
-        ],
+        top_memory_processes=[ProcessInfo(pid=777, name="mem_hog", user="test", cpu_percent=5.0, memory_mb=3000.0)],
     )
 
     anomalies = detector.detect_anomalies(state_with_baseline, spike_snapshot)
@@ -171,9 +159,7 @@ def test_memory_leak_detection(detector, baseline_snapshot):
             process_count=150,
             top_cpu_processes=[],
             top_memory_processes=[
-                ProcessInfo(
-                    pid=666, name="leaky_app", user="test", cpu_percent=5.0, memory_mb=1000.0 + i * 400
-                )
+                ProcessInfo(pid=666, name="leaky_app", user="test", cpu_percent=5.0, memory_mb=1000.0 + i * 400)
             ],
         )
         state.add_snapshot(snapshot)
@@ -247,11 +233,7 @@ def test_zombie_process_detection(detector, state_with_baseline):
         load_5min=1.8,
         load_15min=1.5,
         process_count=150,
-        top_cpu_processes=[
-            ProcessInfo(
-                pid=555, name="zombie", user="test", cpu_percent=0.0, memory_mb=0.0, state="Z"
-            )
-        ],
+        top_cpu_processes=[ProcessInfo(pid=555, name="zombie", user="test", cpu_percent=0.0, memory_mb=0.0, state="Z")],
         top_memory_processes=[],
     )
 
@@ -276,11 +258,7 @@ def test_new_high_resource_process(detector, state_with_baseline):
         load_5min=1.8,
         load_15min=1.5,
         process_count=151,
-        top_cpu_processes=[
-            ProcessInfo(
-                pid=9999, name="new_proc", user="test", cpu_percent=25.0, memory_mb=100.0
-            )
-        ],
+        top_cpu_processes=[ProcessInfo(pid=9999, name="new_proc", user="test", cpu_percent=25.0, memory_mb=100.0)],
         top_memory_processes=[],
     )
 

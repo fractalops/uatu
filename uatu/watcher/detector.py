@@ -50,9 +50,7 @@ class AnomalyDetector:
 
         return anomalies
 
-    def _detect_cpu_anomalies(
-        self, state: WatcherState, snapshot: SystemSnapshot
-    ) -> list[AnomalyEvent]:
+    def _detect_cpu_anomalies(self, state: WatcherState, snapshot: SystemSnapshot) -> list[AnomalyEvent]:
         """Detect CPU-related anomalies."""
         anomalies = []
 
@@ -88,10 +86,7 @@ class AnomalyDetector:
             top_proc = snapshot.top_cpu_processes[0] if snapshot.top_cpu_processes else None
             culprit_info = f" - {top_proc.name} (PID {top_proc.pid})" if top_proc else ""
 
-            message = (
-                f"CPU spike: {snapshot.cpu_percent:.1f}% "
-                f"(baseline: {baseline.cpu_percent:.1f}%){culprit_info}"
-            )
+            message = f"CPU spike: {snapshot.cpu_percent:.1f}% (baseline: {baseline.cpu_percent:.1f}%){culprit_info}"
             anomalies.append(
                 AnomalyEvent(
                     timestamp=snapshot.timestamp,
@@ -106,16 +101,16 @@ class AnomalyDetector:
                             "pid": top_proc.pid,
                             "name": top_proc.name,
                             "cpu": top_proc.cpu_percent,
-                        } if top_proc else None,
+                        }
+                        if top_proc
+                        else None,
                     },
                 )
             )
 
         return anomalies
 
-    def _detect_memory_anomalies(
-        self, state: WatcherState, snapshot: SystemSnapshot
-    ) -> list[AnomalyEvent]:
+    def _detect_memory_anomalies(self, state: WatcherState, snapshot: SystemSnapshot) -> list[AnomalyEvent]:
         """Detect memory-related anomalies."""
         anomalies = []
 
@@ -162,7 +157,9 @@ class AnomalyDetector:
                             "pid": top_mem.pid,
                             "name": top_mem.name,
                             "memory_mb": top_mem.memory_mb,
-                        } if top_mem else None,
+                        }
+                        if top_mem
+                        else None,
                     },
                 )
             )
@@ -190,16 +187,16 @@ class AnomalyDetector:
                                 "pid": top_mem.pid,
                                 "name": top_mem.name,
                                 "memory_mb": top_mem.memory_mb,
-                            } if top_mem else None,
+                            }
+                            if top_mem
+                            else None,
                         },
                     )
                 )
 
         return anomalies
 
-    def _detect_process_anomalies(
-        self, state: WatcherState, snapshot: SystemSnapshot
-    ) -> list[AnomalyEvent]:
+    def _detect_process_anomalies(self, state: WatcherState, snapshot: SystemSnapshot) -> list[AnomalyEvent]:
         """Detect process-related anomalies."""
         anomalies = []
 
@@ -208,20 +205,14 @@ class AnomalyDetector:
 
         # Compare process lists
         current_pids = {p.pid for p in snapshot.top_cpu_processes + snapshot.top_memory_processes}
-        previous_pids = {
-            p.pid for p in state.current.top_cpu_processes + state.current.top_memory_processes
-        }
+        previous_pids = {p.pid for p in state.current.top_cpu_processes + state.current.top_memory_processes}
 
         # Detect new high-resource processes
         new_pids = current_pids - previous_pids
         for pid in new_pids:
             # Find the process info
             proc = next(
-                (
-                    p
-                    for p in snapshot.top_cpu_processes + snapshot.top_memory_processes
-                    if p.pid == pid
-                ),
+                (p for p in snapshot.top_cpu_processes + snapshot.top_memory_processes if p.pid == pid),
                 None,
             )
             if proc and (proc.cpu_percent > 20 or proc.memory_mb > 500):

@@ -78,11 +78,7 @@ class FindProcessByName(Tool):
         all_processes = list_tool.execute()
 
         # Filter by name
-        return [
-            p
-            for p in all_processes
-            if name.lower() in p["name"].lower() or name.lower() in p["cmdline"].lower()
-        ]
+        return [p for p in all_processes if name.lower() in p["name"].lower() or name.lower() in p["cmdline"].lower()]
 
 
 class CheckPortBinding(Tool):

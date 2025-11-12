@@ -84,9 +84,9 @@ class AnomalyEvent:
     def __str__(self) -> str:
         """Human-readable event description."""
         severity_emoji = {
-            Severity.INFO: "ℹ️",
-            Severity.WARNING: "⚠️",
-            Severity.CRITICAL: "🔴",
+            Severity.INFO: "[i]",
+            Severity.WARNING: "[!]",
+            Severity.CRITICAL: "[!!]",
         }
         emoji = severity_emoji.get(self.severity, "")
         time_str = self.timestamp.strftime("%H:%M:%S")

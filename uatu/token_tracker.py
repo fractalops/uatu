@@ -61,15 +61,11 @@ class TokenUsage:
 
         # Display in Claude Code style
         if budget and remaining is not None:
-            console.print(
-                f"[dim]Token usage: {usage_str} = {total:,}/{budget:,}; {remaining:,} remaining[/dim]"
-            )
+            console.print(f"[dim]Token usage: {usage_str} = {total:,}/{budget:,}; {remaining:,} remaining[/dim]")
         else:
             console.print(f"[dim]Token usage: {usage_str} = {total:,}[/dim]")
 
-    def display_per_turn(
-        self, turn: int, input_tokens: int, output_tokens: int, cache_read: int = 0
-    ) -> None:
+    def display_per_turn(self, turn: int, input_tokens: int, output_tokens: int, cache_read: int = 0) -> None:
         """
         Display token usage for a single turn in Claude Code style.
 

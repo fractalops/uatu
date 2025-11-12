@@ -104,12 +104,12 @@ class ConsoleDisplayHandler(BaseHandler):
 
         # Display event
         icon_map = {
-            Severity.INFO: "ℹ️ ",
-            Severity.WARNING: "⚠️ ",
-            Severity.ERROR: "❌",
-            Severity.CRITICAL: "🚨",
+            Severity.INFO: "[i]",
+            Severity.WARNING: "[!]",
+            Severity.ERROR: "[x]",
+            Severity.CRITICAL: "[!!]",
         }
-        icon = icon_map.get(event.severity, "•")
+        icon = icon_map.get(event.severity, "*")
 
         console.print(f"[{color}][{time_str}] {icon}  {event.message}[/{color}]")
 
@@ -279,6 +279,4 @@ class RateLimiter(BaseHandler):
 
         # Check if rate limit exceeded
         if len(self.event_times) > self.max_events:
-            console.print(
-                f"[yellow]⚠️  Rate limit: {len(self.event_times)} events in last minute[/yellow]"
-            )
+            console.print(f"[yellow][!] Rate limit: {len(self.event_times)} events in last minute[/yellow]")

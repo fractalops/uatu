@@ -92,7 +92,7 @@ class AsyncWatcher:
         """Learn baseline system metrics asynchronously."""
         # If baseline already provided (for testing), skip
         if self._baseline is not None:
-            console.print("[green]✓ Using pre-calculated baseline[/green]")
+            console.print("[green][+] Using pre-calculated baseline[/green]")
             if self.cpu_watcher:
                 self.cpu_watcher.baseline = self._baseline.cpu_percent
             if self.memory_watcher:
@@ -101,7 +101,7 @@ class AsyncWatcher:
                 self.load_watcher.baseline = self._baseline.load_1min
             return
 
-        console.print("\n[yellow]🔍 Establishing baseline...[/yellow]")
+        console.print("\n[yellow][-] Establishing baseline...[/yellow]")
 
         samples: list[SystemSnapshot] = []
         duration = self.baseline_duration * 60
@@ -135,8 +135,7 @@ class AsyncWatcher:
             self.load_watcher.baseline = avg_load
 
         console.print(
-            f"\n[green]✓ Baseline established:[/green] "
-            f"CPU {avg_cpu:.1f}%, Memory {avg_mem:.1f}%, Load {avg_load:.2f}"
+            f"\n[green][+] Baseline established:[/green] CPU {avg_cpu:.1f}%, Memory {avg_mem:.1f}%, Load {avg_load:.2f}"
         )
 
     def _take_snapshot(self) -> SystemSnapshot:
@@ -167,9 +166,9 @@ class AsyncWatcher:
 
             # Display watcher info
             console.print()
-            console.print("[bold blue]👁️  Uatu is watching...[/bold blue]")
+            console.print("[bold blue][-] Uatu is watching...[/bold blue]")
             if self.investigate_mode:
-                console.print("[dim]⚡ LLM investigations enabled[/dim]")
+                console.print("[dim][*] LLM investigations enabled[/dim]")
             console.print()
 
             # Start all watchers and handlers concurrently

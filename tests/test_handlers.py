@@ -89,9 +89,10 @@ async def test_rate_limiter_cleans_old_events(event_bus):
     """Test that RateLimiter removes old events."""
     rate_limiter = RateLimiter(event_bus, max_events_per_minute=10)
 
-    # Add old event
-    old_time = datetime.now()
-    old_time = old_time.replace(minute=old_time.minute - 2)
+    # Add old event (2 minutes ago)
+    from datetime import timedelta
+
+    old_time = datetime.now() - timedelta(minutes=2)
     rate_limiter.event_times.append(old_time)
 
     # Add new event

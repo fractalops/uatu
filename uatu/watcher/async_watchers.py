@@ -209,9 +209,7 @@ class ProcessWatcher(BaseWatcher):
 
                 # Clean up old deaths (keep only last 60 seconds)
                 cutoff = datetime.now().timestamp() - 60
-                self.recent_deaths = [
-                    (name, ts) for name, ts in self.recent_deaths if ts.timestamp() > cutoff
-                ]
+                self.recent_deaths = [(name, ts) for name, ts in self.recent_deaths if ts.timestamp() > cutoff]
 
                 # Update process map
                 self.process_map = current_procs

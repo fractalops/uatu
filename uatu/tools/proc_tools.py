@@ -18,8 +18,7 @@ class ReadProcFile(Tool):
     def metadata(self) -> ToolMetadata:
         return ToolMetadata(
             name="read_proc_file",
-            description="Read a file from /proc or /sys filesystem directly. "
-            "Low-level access to kernel data.",
+            description="Read a file from /proc or /sys filesystem directly. Low-level access to kernel data.",
             tier=0,
             requires_proc=True,
         )
@@ -84,9 +83,7 @@ class ListProcesses(Tool):
             },
         }
 
-    def execute(
-        self, min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0
-    ) -> list[dict[str, Any]]:
+    def execute(self, min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> list[dict[str, Any]]:
         """List all processes."""
         processes = []
 
@@ -137,9 +134,7 @@ class ListProcesses(Tool):
             "name": status.get("Name", "?"),
             "state": state,
             "user": status.get("Uid", "?").split()[0],  # Real UID
-            "memory_mb": int(status.get("VmRSS", "0").split()[0]) / 1024
-            if "VmRSS" in status
-            else 0,
+            "memory_mb": int(status.get("VmRSS", "0").split()[0]) / 1024 if "VmRSS" in status else 0,
             "cpu_percent": 0.0,  # TODO: Calculate from /proc/[pid]/stat
             "threads": int(status.get("Threads", "0")),
             "cmdline": cmdline or status.get("Name", "?"),
@@ -262,9 +257,7 @@ class GetProcessTree(Tool):
                 stats = parts[1].split()
                 ppid = int(stats[1])
 
-                cmdline = (
-                    (Path(f"/proc/{pid}") / "cmdline").read_text().replace("\x00", " ").strip()
-                )
+                cmdline = (Path(f"/proc/{pid}") / "cmdline").read_text().replace("\x00", " ").strip()
 
                 processes[pid] = {
                     "pid": pid,

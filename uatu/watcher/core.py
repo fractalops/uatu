@@ -76,14 +76,10 @@ class Watcher:
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         mode = "Investigation Mode" if self.investigate_mode else "Detection Mode"
-        self.console.print(f"[bold blue]🔍 Uatu is watching... ({mode})[/bold blue]")
-        self.console.print(
-            f"Interval: {self.interval}s | "
-            f"Baseline: {self.baseline_duration}min | "
-            f"Log: {self.log_file}"
-        )
+        self.console.print(f"[bold blue][-] Uatu is watching... ({mode})[/bold blue]")
+        self.console.print(f"Interval: {self.interval}s | Baseline: {self.baseline_duration}min | Log: {self.log_file}")
         if self.investigate_mode:
-            self.console.print("[yellow]⚡ LLM investigations enabled[/yellow]")
+            self.console.print("[yellow][*] LLM investigations enabled[/yellow]")
         self.console.print()
 
         # Establish baseline
@@ -122,7 +118,7 @@ class Watcher:
             self.state.baseline = self._calculate_baseline(baseline_samples)
             self.baseline_established = True
             self.console.print(
-                f"[green]✓ Baseline established: "
+                f"[green][+] Baseline established: "
                 f"CPU ~{self.state.baseline.cpu_percent:.1f}%, "
                 f"Memory ~{self.state.baseline.memory_percent:.1f}%[/green]"
             )

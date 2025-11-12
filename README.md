@@ -1,16 +1,17 @@
 # Uatu - The Watcher
 
-An autonomous system troubleshooting agent powered by Claude. Continuously monitors server health, detects anomalies, diagnoses root causes, and provides actionable remediation steps.
+An agentic system troubleshooting tool powered by Claude. Chat with your system, investigate issues with AI-powered analysis, and autonomously monitor for anomalies.
 
 ## Why Uatu?
 
-Traditional monitoring tools alert you to problems. Uatu understands them.
+Traditional monitoring tools alert you to problems. Uatu **understands** them.
 
-**Key capabilities:**
-- Autonomous anomaly detection using adaptive baselines
-- Root cause analysis connecting symptoms across CPU, memory, processes, and logs
-- Natural language investigation interface for interactive troubleshooting
-- Tiered tool discovery adapting to available system utilities
+
+**Core capabilities:**
+- Interactive chat mode for conversational system troubleshooting
+- One-shot investigations for specific symptoms
+- Continuous monitoring with adaptive baseline learning
+- Root cause analysis connecting CPU, memory, processes, and logs
 - Token-efficient caching and rate limiting for cost control
 
 ## Installation
@@ -28,7 +29,7 @@ echo "ANTHROPIC_API_KEY=your_key" > .env
 
 ## Quick Start
 
-### Interactive Chat Mode
+### Interactive Chat Mode (Default)
 
 Start a conversational troubleshooting session:
 
@@ -36,24 +37,41 @@ Start a conversational troubleshooting session:
 uv run uatu
 ```
 
-Ask questions naturally:
+Ask questions naturally and get AI-powered analysis:
 - "What's causing high CPU usage?"
-- "Why are there so many process crashes?"
-- "Show me zombie processes"
+- "Why is my server running slowly?"
+- "Investigate recent memory issues"
+- "Check for network bottlenecks"
+
+### One-Shot Investigation
+
+Investigate a specific symptom immediately:
+
+```bash
+uv run uatu investigate "server running slowly"
+uv run uatu investigate "high CPU usage"
+uv run uatu investigate "memory leak suspected"
+```
+
+The agent will:
+- Gather relevant system information
+- Analyze logs and metrics
+- Provide root cause analysis
+- Suggest actionable remediation steps
 
 ### Continuous Monitoring
 
-Watch your system and detect anomalies automatically:
+Watch your system and detect anomalies autonomously:
 
 ```bash
-# Async mode (recommended) - event-driven concurrent watchers
-uv run uatu watch --async
+# Fast testing (1 minute baseline)
+uv run uatu watch --baseline 1
 
-# With LLM investigation of detected anomalies
-uv run uatu watch --async --investigate
+# Production monitoring (5 minute baseline, default)
+uv run uatu watch
 
-# Sync mode (legacy) - polling-based
-uv run uatu watch --sync
+# With AI investigation of detected anomalies
+uv run uatu watch --investigate
 ```
 
 **How it works:**
@@ -65,7 +83,7 @@ uv run uatu watch --sync
 - Logs events to `~/.uatu/events.jsonl`
 
 **Phase 2: Investigation** (--investigate flag)
-- Queues detected anomalies for LLM analysis
+- Uses Claude to investigate detected anomalies
 - Explains root cause, impact, and relationships
 - Provides actionable remediation steps with risk assessment
 - Caches investigations to avoid redundant API calls
@@ -74,31 +92,7 @@ uv run uatu watch --sync
 View logged events:
 ```bash
 uv run uatu events
-```
-
-### One-Shot Investigation
-
-Investigate a specific symptom immediately:
-
-```bash
-uv run uatu investigate "server running slowly"
-```
-
-### System Commands
-
-No API key required:
-
-```bash
-# Health check
-uv run uatu check
-
-# Process analysis
-uv run uatu processes --high-cpu
-uv run uatu processes --high-memory
-uv run uatu processes --zombies
-
-# Tool discovery
-uv run uatu tools
+uv run uatu events --last 20
 ```
 
 ## Configuration
@@ -110,11 +104,9 @@ Create `.env` with options:
 ANTHROPIC_API_KEY=your_key
 
 # Optional
-UATU_MODEL=claude-sonnet-4-5-20250929
-UATU_MAX_TOKENS=4096
-UATU_TEMPERATURE=0.0
-UATU_READ_ONLY=true
-UATU_REQUIRE_APPROVAL=true
+UATU_MODEL=claude-sonnet-4-5-20250929  # Claude model to use
+UATU_READ_ONLY=true                     # Agent can only read, not modify system
+UATU_REQUIRE_APPROVAL=true              # Require approval for risky actions
 ```
 
 ## Development

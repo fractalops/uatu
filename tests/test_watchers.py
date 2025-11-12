@@ -72,6 +72,7 @@ async def test_cpu_watcher_ignores_normal_cpu(mock_cpu_percent, event_bus):
 @patch("uatu.watcher.async_watchers.psutil.virtual_memory")
 async def test_memory_watcher_detects_spike(mock_memory, event_bus):
     """Test that MemoryWatcher detects memory spikes."""
+
     # Mock memory object
     class MockMemory:
         percent = 85.0

@@ -59,15 +59,14 @@ Be concise but thorough. Focus on actionable insights."""
             system_prompt=self.system_prompt,
             mcp_servers={"system-tools": create_system_tools_mcp_server()},
             max_turns=10,
+            permission_mode="bypassPermissions",  # Auto-approve system monitoring tools
         )
 
         # Use SDK's query function
         response_text = ""
 
         try:
-            async for message in query(
-                prompt=f"Please investigate this system issue: {symptom}", options=options
-            ):
+            async for message in query(prompt=f"Please investigate this system issue: {symptom}", options=options):
                 # Track token usage from ResultMessage (contains final usage stats)
                 if isinstance(message, ResultMessage):
                     if hasattr(message, "usage") and message.usage is not None:

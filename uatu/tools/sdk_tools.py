@@ -32,9 +32,7 @@ _capabilities = ToolCapabilities.detect()
         "required": [],
     },
 )
-async def list_processes(
-    min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0
-) -> list[dict[str, Any]]:
+async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> list[dict[str, Any]]:
     """List all running processes."""
     # Import here to keep logic in existing files
     if platform.system() == "Darwin":
@@ -51,8 +49,7 @@ async def list_processes(
 
 @tool(
     name="get_system_info",
-    description="Get system-wide CPU, memory, and load information. "
-    "Returns current resource usage statistics.",
+    description="Get system-wide CPU, memory, and load information. Returns current resource usage statistics.",
     input_schema={"type": "object", "properties": {}, "required": []},
 )
 async def get_system_info() -> dict[str, Any]:

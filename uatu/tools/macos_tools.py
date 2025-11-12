@@ -43,9 +43,7 @@ class ListProcessesMac(Tool):
             },
         }
 
-    def execute(
-        self, min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0
-    ) -> list[dict[str, Any]]:
+    def execute(self, min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> list[dict[str, Any]]:
         """List all processes using macOS ps."""
         try:
             # macOS ps format
