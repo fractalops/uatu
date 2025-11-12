@@ -10,7 +10,6 @@ Traditional monitoring tools alert you to problems. Uatu understands them.
 - Autonomous anomaly detection using adaptive baselines
 - Root cause analysis connecting symptoms across CPU, memory, processes, and logs
 - Natural language investigation interface for interactive troubleshooting
-- Event-driven async architecture for efficient concurrent monitoring
 - Tiered tool discovery adapting to available system utilities
 - Token-efficient caching and rate limiting for cost control
 
@@ -102,30 +101,6 @@ uv run uatu processes --zombies
 uv run uatu tools
 ```
 
-## Architecture
-
-### Event-Driven Async Design
-
-- **EventBus**: Pub/sub pattern decoupling watchers from handlers
-- **Concurrent Watchers**: CPU (1s), Memory (2s), Process (3s), Load (5s) intervals
-- **Async Handlers**: Non-blocking event logging, console display, LLM investigation
-- **Graceful Degradation**: Works in minimal environments (psutil-only tier 0)
-
-### Tiered Tool Discovery
-
-Uatu adapts to available system utilities:
-- **Tier 0**: Pure Python (psutil) - works everywhere
-- **Tier 1**: Basic Unix (ps, lsof) - standard servers
-- **Tier 2**: Advanced (ss, systemctl, journalctl) - full Linux systems
-- **Tier 3**: Debugging (strace, perf) - development environments
-
-### Cost Control
-
-- Prompt caching reduces token usage by ~95% for repeated context
-- Rate limiting prevents API call spikes
-- Investigation caching avoids re-analyzing identical patterns
-- Phase 1 mode runs indefinitely at $0 cost
-
 ## Configuration
 
 Create `.env` with options:
@@ -189,4 +164,4 @@ uatu/
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
