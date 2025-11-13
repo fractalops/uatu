@@ -11,6 +11,7 @@ from uatu.watcher.async_handlers import (
     ConsoleDisplayHandler,
     EventLogger,
     InvestigationHandler,
+    InvestigationLogger,
     RateLimiter,
 )
 from uatu.watcher.async_watchers import (
@@ -20,7 +21,7 @@ from uatu.watcher.async_watchers import (
     ProcessWatcher,
 )
 from uatu.watcher.base import BaseHandler, BaseWatcher
-from uatu.watcher.models import SystemSnapshot
+from uatu.watcher.models import Severity, SystemSnapshot
 
 console = Console()
 
@@ -33,20 +34,23 @@ class AsyncWatcher:
         interval_seconds: int = 10,
         baseline_duration_minutes: int = 5,
         investigate: bool = False,
+        investigate_level: Severity = Severity.WARNING,
         log_file: Path | None = None,
+        investigation_log_file: Path | None = None,
         event_bus: EventBus | None = None,
         watchers: list[BaseWatcher] | None = None,
         handlers: list[BaseHandler] | None = None,
         baseline: SystemSnapshot | None = None,
     ):
-        """
-        Initialize async watcher with dependency injection.
+        """Initialize async watcher with dependency injection.
 
         Args:
             interval_seconds: Not used in async mode (kept for compatibility)
             baseline_duration_minutes: Duration to learn baseline
             investigate: Whether to run LLM investigations
+            investigate_level: Minimum severity to trigger investigation (default: WARNING)
             log_file: Path to event log file
+            investigation_log_file: Path to investigation log file
             event_bus: Event bus (injected for testing, created if None)
             watchers: List of watchers (injected for testing, created if None)
             handlers: List of handlers (injected for testing, created if None)
@@ -54,6 +58,7 @@ class AsyncWatcher:
         """
         self.baseline_duration = baseline_duration_minutes
         self.investigate_mode = investigate
+        self.investigate_level = investigate_level
         self._baseline = baseline
 
         # Event bus (allow injection)
@@ -76,12 +81,19 @@ class AsyncWatcher:
         else:
             self.handlers = [
                 EventLogger(self.event_bus, log_file),
-                ConsoleDisplayHandler(self.event_bus),
                 RateLimiter(self.event_bus, max_events_per_minute=20),
+                ConsoleDisplayHandler(self.event_bus),
             ]
 
             if investigate:
-                self.handlers.append(InvestigationHandler(self.event_bus))
+                investigation_logger = InvestigationLogger(investigation_log_file)
+                self.handlers.append(
+                    InvestigationHandler(
+                        self.event_bus,
+                        min_severity=investigate_level,
+                        investigation_logger=investigation_logger,
+                    )
+                )
 
         # Keep references to specific watchers for baseline updates
         self.cpu_watcher = next((w for w in self.watchers if isinstance(w, CPUWatcher)), None)
@@ -159,9 +171,17 @@ class AsyncWatcher:
         )
 
     async def start(self) -> None:
-        """Start all async watchers and handlers."""
+        """Start all async watchers and handlers.
+
+        Note on baseline race condition prevention:
+        - establish_baseline() is AWAITED before watchers start (line 184)
+        - Watchers are initialized with baseline=0.0 (line 75-78)
+        - Each watcher has defensive check: "if self.baseline > 0" before detecting anomalies
+        - This prevents false positives even if watchers somehow started before baseline was set
+        - The await + defensive checks provide defense-in-depth against race conditions
+        """
         try:
-            # Establish baseline first
+            # Establish baseline first (MUST complete before watchers start)
             await self.establish_baseline()
 
             # Display watcher info

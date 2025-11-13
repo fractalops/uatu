@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,65 @@ from uatu.watcher.investigator import Investigator
 from uatu.watcher.models import AnomalyEvent, Severity, SystemSnapshot
 
 console = Console()
+logger = logging.getLogger(__name__)
+
+
+class InvestigationLogger(BaseHandler):
+    """Log investigation reports to disk."""
+
+    def __init__(self, log_file: Path | None = None):
+        """Initialize investigation logger.
+
+        Args:
+            log_file: Path to investigation log file (default: ~/.uatu/investigations.jsonl)
+        """
+        self.log_file = log_file or Path.home() / ".uatu" / "investigations.jsonl"
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    async def on_event(self, event: AnomalyEvent) -> None:
+        """Handle event (satisfies BaseHandler interface)."""
+        pass  # Not used directly - called by InvestigationHandler
+
+    async def log_investigation(self, event: AnomalyEvent, result: dict[str, str], snapshot: SystemSnapshot) -> None:
+        """Log an investigation result.
+
+        Args:
+            event: Original anomaly event
+            result: Investigation result from investigator
+            snapshot: System snapshot at investigation time
+        """
+        try:
+            await asyncio.to_thread(self._write_investigation, event, result, snapshot)
+        except Exception as e:
+            console.print(f"[red]Failed to log investigation: {e}[/red]")
+
+    def _write_investigation(self, event: AnomalyEvent, result: dict[str, str], snapshot: SystemSnapshot) -> None:
+        """Write investigation to log file (runs in thread)."""
+        investigation_dict = {
+            "timestamp": datetime.now().isoformat(),
+            "event": {
+                "type": event.type.value,
+                "severity": event.severity.string_value,
+                "message": event.message,
+                "event_timestamp": event.timestamp.isoformat(),
+                "details": event.details,
+            },
+            "system": {
+                "cpu_percent": snapshot.cpu_percent,
+                "memory_percent": snapshot.memory_percent,
+                "memory_used_mb": snapshot.memory_used_mb,
+                "load_1min": snapshot.load_1min,
+                "process_count": snapshot.process_count,
+            },
+            "investigation": {
+                "analysis": result["analysis"],
+                "cached": result.get("cached", False),
+                "cache_count": result.get("cache_count", 1),
+            },
+        }
+
+        with open(self.log_file, "a") as f:
+            f.write(json.dumps(investigation_dict) + "\n")
 
 
 class EventLogger(BaseHandler):
@@ -57,7 +117,7 @@ class EventLogger(BaseHandler):
         event_dict = {
             "timestamp": event.timestamp.isoformat(),
             "type": event.type.value,
-            "severity": event.severity.value,
+            "severity": event.severity.string_value,
             "message": event.message,
             "details": event.details,
         }
@@ -117,16 +177,24 @@ class ConsoleDisplayHandler(BaseHandler):
 class InvestigationHandler(BaseHandler):
     """Handle anomaly events with async investigation."""
 
-    def __init__(self, event_bus: EventBus):
-        """
-        Initialize investigation handler.
+    def __init__(
+        self,
+        event_bus: EventBus,
+        min_severity: Severity = Severity.WARNING,
+        investigation_logger: InvestigationLogger | None = None,
+    ):
+        """Initialize investigation handler.
 
         Args:
             event_bus: Event bus to subscribe to
+            min_severity: Minimum severity to trigger investigation (default: WARNING)
+            investigation_logger: Logger for investigations (creates new one if None)
         """
         self.event_bus = event_bus
         self.investigator = Investigator()
         self.investigation_queue: asyncio.Queue[AnomalyEvent] = asyncio.Queue()
+        self.min_severity = min_severity
+        self.investigation_logger = investigation_logger or InvestigationLogger()
 
         # Subscribe to anomalies that warrant investigation
         event_bus.subscribe("anomaly.cpu", self.on_anomaly)
@@ -144,14 +212,14 @@ class InvestigationHandler(BaseHandler):
         await self.on_anomaly(event)
 
     async def on_anomaly(self, event: AnomalyEvent) -> None:
-        """
-        Queue anomaly for investigation (non-blocking).
+        """Queue anomaly for investigation (non-blocking).
 
         Args:
             event: Anomaly event to investigate
         """
-        # Only investigate warnings and above
-        if event.severity in [Severity.WARNING, Severity.ERROR, Severity.CRITICAL]:
+        # Check if severity meets minimum threshold
+        # IntEnum allows direct comparison: ERROR > WARNING
+        if event.severity >= self.min_severity:
             await self.investigation_queue.put(event)
 
     async def start(self) -> None:
@@ -169,8 +237,7 @@ class InvestigationHandler(BaseHandler):
                 await asyncio.sleep(1)
 
     async def _investigate_and_display(self, event: AnomalyEvent) -> None:
-        """
-        Investigate and display results.
+        """Investigate and display/log results.
 
         Args:
             event: Anomaly event to investigate
@@ -184,11 +251,16 @@ class InvestigationHandler(BaseHandler):
             # Investigate (already async in investigator)
             result = await self.investigator.investigate(event, snapshot)
 
+            # Log investigation
+            await self.investigation_logger.log_investigation(event, result, snapshot)
+
             # Display investigation result
             self._display_investigation(event, result)
 
         except Exception as e:
-            console.print(f"[red]Investigation failed: {e}[/red]")
+            error_msg = f"Investigation failed: {e}"
+            console.print(f"[red]{error_msg}[/red]")
+            logger.error(error_msg, exc_info=True)
 
     def _take_snapshot(self) -> SystemSnapshot:
         """Take current system snapshot (runs in thread)."""

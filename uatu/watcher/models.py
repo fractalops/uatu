@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Any
 
 
@@ -23,13 +23,40 @@ class AnomalyType(Enum):
     LOG_ERROR = "log_error"
 
 
-class Severity(Enum):
-    """Severity levels for anomalies."""
+class Severity(IntEnum):
+    """Severity levels for anomalies.
 
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-    CRITICAL = "critical"
+    IntEnum allows direct comparison: Severity.ERROR > Severity.WARNING
+    Values map to increasing severity: INFO(0) < WARNING(1) < ERROR(2) < CRITICAL(3)
+    """
+
+    INFO = 0
+    WARNING = 1
+    ERROR = 2
+    CRITICAL = 3
+
+    @property
+    def string_value(self) -> str:
+        """Get string representation for JSON serialization."""
+        return {
+            Severity.INFO: "info",
+            Severity.WARNING: "warning",
+            Severity.ERROR: "error",
+            Severity.CRITICAL: "critical",
+        }[self]
+
+    @classmethod
+    def from_string(cls, value: str) -> "Severity":
+        """Create Severity from string value (for deserialization)."""
+        mapping = {
+            "info": cls.INFO,
+            "warning": cls.WARNING,
+            "error": cls.ERROR,
+            "critical": cls.CRITICAL,
+        }
+        if value.lower() not in mapping:
+            raise ValueError(f"Invalid severity: {value}")
+        return mapping[value.lower()]
 
 
 @dataclass
@@ -97,7 +124,7 @@ class AnomalyEvent:
         return {
             "timestamp": self.timestamp.isoformat(),
             "type": self.type.value,
-            "severity": self.severity.value,
+            "severity": self.severity.string_value,
             "message": self.message,
             "details": self.details,
         }

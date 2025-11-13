@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from uatu.watcher.async_handlers import ConsoleDisplayHandler, EventLogger, RateLimiter
+from uatu.watcher.async_handlers import ConsoleDisplayHandler, EventLogger, InvestigationHandler, RateLimiter
 from uatu.watcher.models import AnomalyEvent, AnomalyType, Severity
 
 
@@ -107,3 +107,96 @@ async def test_rate_limiter_cleans_old_events(event_bus):
 
     # Old event should be removed, only new event remains
     assert len(rate_limiter.event_times) == 1
+
+
+@pytest.mark.asyncio
+async def test_investigation_handler_severity_filtering_warning(event_bus):
+    """Test that InvestigationHandler only queues events >= WARNING severity."""
+    handler = InvestigationHandler(
+        event_bus=event_bus,
+        min_severity=Severity.WARNING,
+    )
+
+    # Create events with different severities
+    info_event = AnomalyEvent(
+        timestamp=datetime.now(),
+        type=AnomalyType.CPU_SPIKE,
+        severity=Severity.INFO,
+        message="Info event",
+        details={},
+    )
+    warning_event = AnomalyEvent(
+        timestamp=datetime.now(),
+        type=AnomalyType.CPU_SPIKE,
+        severity=Severity.WARNING,
+        message="Warning event",
+        details={},
+    )
+    error_event = AnomalyEvent(
+        timestamp=datetime.now(),
+        type=AnomalyType.CPU_SPIKE,
+        severity=Severity.ERROR,
+        message="Error event",
+        details={},
+    )
+
+    # Queue events
+    await handler.on_anomaly(info_event)
+    await handler.on_anomaly(warning_event)
+    await handler.on_anomaly(error_event)
+
+    # Check queue - INFO should be filtered out
+    assert handler.investigation_queue.qsize() == 2
+
+    # Verify correct events are queued
+    queued_event1 = await handler.investigation_queue.get()
+    queued_event2 = await handler.investigation_queue.get()
+
+    assert queued_event1.severity == Severity.WARNING
+    assert queued_event2.severity == Severity.ERROR
+
+
+@pytest.mark.asyncio
+async def test_investigation_handler_severity_filtering_error(event_bus):
+    """Test filtering with ERROR minimum severity."""
+    handler = InvestigationHandler(
+        event_bus=event_bus,
+        min_severity=Severity.ERROR,
+    )
+
+    # Create events
+    warning_event = AnomalyEvent(
+        timestamp=datetime.now(),
+        type=AnomalyType.CPU_SPIKE,
+        severity=Severity.WARNING,
+        message="Warning event",
+        details={},
+    )
+    error_event = AnomalyEvent(
+        timestamp=datetime.now(),
+        type=AnomalyType.MEMORY_SPIKE,
+        severity=Severity.ERROR,
+        message="Error event",
+        details={},
+    )
+    critical_event = AnomalyEvent(
+        timestamp=datetime.now(),
+        type=AnomalyType.CRASH_LOOP,
+        severity=Severity.CRITICAL,
+        message="Critical event",
+        details={},
+    )
+
+    # Queue events
+    await handler.on_anomaly(warning_event)
+    await handler.on_anomaly(error_event)
+    await handler.on_anomaly(critical_event)
+
+    # WARNING should be filtered out
+    assert handler.investigation_queue.qsize() == 2
+
+    queued_event1 = await handler.investigation_queue.get()
+    queued_event2 = await handler.investigation_queue.get()
+
+    assert queued_event1.severity == Severity.ERROR
+    assert queued_event2.severity == Severity.CRITICAL

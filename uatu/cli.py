@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from uatu.agent import UatuAgent
-from uatu.chat import UatuChat
+from uatu.chat import LeftAlignedMarkdown, UatuChat
 from uatu.watcher import AsyncWatcher, Watcher
 
 app = typer.Typer(
@@ -59,13 +59,37 @@ def investigate(symptom: str) -> None:
             tool_name = data["name"]
             tool_input = data["input"]
 
-            # Format tool call like Claude Code
+            # Bash commands: Show description + command
             if tool_name == "Bash":
                 cmd = tool_input.get("command", "")
                 desc = tool_input.get("description", "")
-                console.print(f"[dim]> {desc or cmd}[/dim]")
+
+                # Show description if available
+                if desc:
+                    console.print(f"[dim]→ {desc}[/dim]")
+
+                # Show command preview
+                cmd_preview = cmd[:120]
+                if len(cmd) > 120:
+                    cmd_preview += "..."
+                console.print(f"[dim]  $ {cmd_preview}[/dim]")
+
+            # MCP tools: Show with MCP prefix and parameters
+            elif tool_name.startswith("mcp__"):
+                # Clean up name: mcp__system-tools__get_system_info -> Get System Info
+                clean_name = tool_name.split("__")[-1].replace("_", " ").title()
+                console.print(f"[dim]→ MCP: {clean_name}[/dim]")
+
+                # Show key parameters if available
+                if tool_input:
+                    # Show first 3 parameters
+                    params = ", ".join(f"{k}={v}" for k, v in list(tool_input.items())[:3])
+                    if params:
+                        console.print(f"[dim]   ({params})[/dim]")
+
+            # Other tools: Simple display
             else:
-                console.print(f"[dim]> Using tool: {tool_name}[/dim]")
+                console.print(f"[dim]→ {tool_name}[/dim]")
 
         elif event_type == "error":
             console.print(f"[red]Error: {data['message']}[/red]")
@@ -78,14 +102,7 @@ def investigate(symptom: str) -> None:
 
     console.print("\n[bold cyan]Analysis:[/bold cyan]")
     # Use left-aligned markdown rendering
-    from rich.markdown import Markdown as RichMarkdown
-
-    md = RichMarkdown(result)
-    # Override heading justification to left-align all headings
-    for element in md.elements:
-        if hasattr(element, "justify"):
-            element.justify = "left"
-
+    md = LeftAlignedMarkdown(result)
     console.print(md)
 
     # Display token usage and stats
@@ -108,7 +125,17 @@ def watch(
     investigate: bool = typer.Option(
         False,
         "--investigate",
-        help="Use LLM to investigate anomalies (Phase 2)",
+        help="Use LLM to investigate anomalies",
+    ),
+    investigate_level: str = typer.Option(
+        "warning",
+        "--investigate-level",
+        help="Minimum severity to investigate: info, warning, error, critical",
+    ),
+    investigation_log: Path = typer.Option(
+        Path.home() / ".uatu" / "investigations.jsonl",
+        "--investigation-log",
+        help="Investigation log file path",
     ),
     async_mode: bool = typer.Option(
         True,
@@ -116,14 +143,10 @@ def watch(
         help="Use async event-driven architecture (recommended)",
     ),
 ) -> None:
-    """
-    Watch the system continuously and detect anomalies.
+    """Watch the system continuously and detect anomalies.
 
     Async mode (default): Event-driven, multiple concurrent watchers.
     Sync mode (--sync): Legacy polling-based watcher.
-
-    Phase 1 (default): Detects anomalies using local heuristics only.
-    Phase 2 (--investigate): Uses Claude to investigate and explain anomalies.
 
     Examples:
         # Fast testing (1 minute baseline)
@@ -132,9 +155,30 @@ def watch(
         # Production (5 minute baseline, default)
         uatu watch
 
-        # With investigation
+        # With investigation (WARNING+ severity)
         uatu watch --baseline 1 --investigate
+
+        # Investigate all severity levels
+        uatu watch --investigate --investigate-level info
     """
+    # Parse severity level
+    from uatu.watcher.models import Severity
+
+    severity_map = {
+        "info": Severity.INFO,
+        "warning": Severity.WARNING,
+        "error": Severity.ERROR,
+        "critical": Severity.CRITICAL,
+    }
+
+    # Validate severity level
+    if investigate_level.lower() not in severity_map:
+        console.print(f"[red]Invalid investigate-level: '{investigate_level}'[/red]")
+        console.print(f"[dim]Valid options: {', '.join(severity_map.keys())}[/dim]")
+        raise typer.Exit(1)
+
+    investigate_severity = severity_map[investigate_level.lower()]
+
     try:
         if async_mode:
             # Use async event-driven watcher (recommended)
@@ -142,7 +186,9 @@ def watch(
                 interval_seconds=interval,  # Not used in async mode
                 baseline_duration_minutes=baseline,
                 investigate=investigate,
+                investigate_level=investigate_severity,
                 log_file=log_file,
+                investigation_log_file=investigation_log,
             )
             asyncio.run(watcher.start())
         else:
@@ -162,6 +208,97 @@ def watch(
 
 
 @app.command()
+def investigations(
+    log_file: Path = typer.Option(
+        Path.home() / ".uatu" / "investigations.jsonl",
+        "--log",
+        "-l",
+        help="Investigation log file to read",
+    ),
+    last: int = typer.Option(10, "--last", "-n", help="Show last N investigations"),
+    full: bool = typer.Option(False, "--full", "-f", help="Show full analysis (not just summary)"),
+) -> None:
+    """Show recent AI-powered investigations from watch mode.
+
+    View investigation reports generated by --investigate mode.
+    Useful for reviewing root cause analyses and remediation recommendations.
+    """
+    import json
+
+    if not log_file.exists():
+        console.print(f"[yellow]No investigations found at {log_file}[/yellow]")
+        console.print("[dim]Start watching with: uatu watch --investigate[/dim]")
+        return
+
+    # Read investigations
+    investigations_list = []
+    try:
+        with open(log_file) as f:
+            for line in f:
+                investigations_list.append(json.loads(line))
+    except Exception as e:
+        console.print(f"[red]Error reading log file: {e}[/red]")
+        return
+
+    if not investigations_list:
+        console.print("[green]No investigations yet![/green]")
+        return
+
+    # Show last N investigations
+    recent = investigations_list[-last:]
+
+    for i, investigation in enumerate(recent):
+        event = investigation["event"]
+        system = investigation["system"]
+        inv = investigation["investigation"]
+
+        # Header
+        timestamp = investigation["timestamp"].split("T")[1].split(".")[0]  # HH:MM:SS
+        severity_color = {
+            "info": "blue",
+            "warning": "yellow",
+            "error": "red",
+            "critical": "red bold",
+        }.get(event["severity"], "white")
+
+        inv_num = len(investigations_list) - last + i + 1
+        console.print(f"\n[{severity_color}]━━━ Investigation #{inv_num} [{timestamp}] ━━━[/{severity_color}]")
+        console.print(f"[bold]{event['message']}[/bold]")
+        console.print(f"[dim]Type: {event['type']} | Severity: {event['severity']}[/dim]")
+
+        # System state
+        console.print(
+            f"[dim]System: CPU {system['cpu_percent']:.1f}%, "
+            f"Mem {system['memory_percent']:.1f}%, "
+            f"Load {system['load_1min']:.2f}[/dim]"
+        )
+
+        # Cache indicator
+        if inv.get("cached"):
+            console.print(f"[dim]Cached analysis (seen {inv.get('cache_count', 1)}x)[/dim]")
+
+        # Analysis
+        if full:
+            # Full markdown analysis
+            from uatu.chat import LeftAlignedMarkdown
+
+            md = LeftAlignedMarkdown(inv["analysis"])
+            console.print(Panel(md, border_style=severity_color))
+        else:
+            # Just first few lines as summary
+            lines = inv["analysis"].split("\n")
+            summary_lines = [line for line in lines[:5] if line.strip()]
+            summary = "\n".join(summary_lines)
+            console.print(f"[dim]{summary}...[/dim]")
+            console.print("[dim italic]Use --full to see complete analysis[/dim italic]")
+
+    # Summary
+    console.print()
+    console.print(f"[dim]Total investigations logged: {len(investigations_list)}[/dim]")
+    console.print(f"[dim]Log file: {log_file}[/dim]")
+
+
+@app.command()
 def events(
     log_file: Path = typer.Option(
         Path.home() / ".uatu" / "events.jsonl",
@@ -171,8 +308,7 @@ def events(
     ),
     last: int = typer.Option(10, "--last", "-n", help="Show last N events"),
 ) -> None:
-    """
-    Show recent anomalies detected by watch mode.
+    """Show recent anomalies detected by watch mode.
 
     View the event log to see what anomalies the watcher has detected
     over time. Useful for reviewing system behavior history.

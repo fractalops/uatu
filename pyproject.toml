@@ -4,6 +4,33 @@ version = "0.1.0"
 description = "The Watcher - An agentic system troubleshooting tool powered by Claude"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "fractalops", email = "jstbillz@gmail.com"}
+]
+keywords = [
+    "troubleshooting",
+    "monitoring",
+    "ai",
+    "claude",
+    "system-administration",
+    "devops",
+    "observability"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Environment :: Console",
+]
 dependencies = [
     "claude-agent-sdk>=0.1.6",
     "anthropic>=0.39.0",
@@ -14,6 +41,12 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "prompt-toolkit>=3.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/fractalops/uatu"
+Repository = "https://github.com/fractalops/uatu"
+Issues = "https://github.com/fractalops/uatu/issues"
+Documentation = "https://github.com/fractalops/uatu#readme"
 
 [project.optional-dependencies]
 dev = [

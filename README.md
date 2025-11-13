@@ -74,26 +74,6 @@ uv run uatu watch
 uv run uatu watch --investigate
 ```
 
-**How it works:**
-
-**Phase 1: Detection** (default, no API calls)
-- Establishes adaptive baseline by observing normal behavior
-- Detects CPU spikes, memory issues, crash loops, process restarts
-- Independent watchers run concurrently at optimal intervals
-- Logs events to `~/.uatu/events.jsonl`
-
-**Phase 2: Investigation** (--investigate flag)
-- Uses Claude to investigate detected anomalies
-- Explains root cause, impact, and relationships
-- Provides actionable remediation steps with risk assessment
-- Caches investigations to avoid redundant API calls
-- Rate limits to control costs
-
-View logged events:
-```bash
-uv run uatu events
-uv run uatu events --last 20
-```
 
 ## Configuration
 
@@ -120,38 +100,6 @@ uv run ruff check .
 
 # Format
 uv run ruff format .
-```
-
-## Project Structure
-
-```
-uatu/
-├── uatu/
-│   ├── agent.py              # Claude Agent SDK integration
-│   ├── chat.py               # Interactive chat interface
-│   ├── cli.py                # Command-line interface
-│   ├── config.py             # Settings management
-│   ├── token_tracker.py      # Token usage tracking
-│   ├── capabilities.py       # Tool discovery
-│   ├── events/               # Event bus
-│   │   └── bus.py
-│   ├── tools/                # System analysis
-│   │   ├── processes.py
-│   │   ├── proc_tools.py
-│   │   └── registry.py
-│   └── watcher/              # Monitoring
-│       ├── base.py           # Abstract interfaces
-│       ├── models.py         # Data models
-│       ├── async_core.py     # Async orchestration
-│       ├── async_watchers.py # CPU, Memory, Process, Load watchers
-│       ├── async_handlers.py # Event handlers
-│       └── core.py           # Sync watcher (legacy)
-└── tests/
-    ├── conftest.py           # Test fixtures
-    ├── test_event_bus.py
-    ├── test_watchers.py
-    ├── test_handlers.py
-    └── test_processes.py
 ```
 
 ## License

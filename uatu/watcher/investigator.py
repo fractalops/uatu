@@ -128,7 +128,7 @@ Format your response in markdown with clear sections."""
 
 **Event**: {event.message}
 **Type**: {event.type.value}
-**Severity**: {event.severity.value}
+**Severity**: {event.severity.string_value}
 **Time**: {event.timestamp.strftime("%Y-%m-%d %H:%M:%S")}
 
 **Details**:
