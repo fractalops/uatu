@@ -110,11 +110,12 @@ async def test_rate_limiter_cleans_old_events(event_bus):
 
 
 @pytest.mark.asyncio
-async def test_investigation_handler_severity_filtering_warning(event_bus):
+async def test_investigation_handler_severity_filtering_warning(event_bus, mock_investigator):
     """Test that InvestigationHandler only queues events >= WARNING severity."""
     handler = InvestigationHandler(
         event_bus=event_bus,
         min_severity=Severity.WARNING,
+        investigator=mock_investigator,
     )
 
     # Create events with different severities
@@ -157,11 +158,12 @@ async def test_investigation_handler_severity_filtering_warning(event_bus):
 
 
 @pytest.mark.asyncio
-async def test_investigation_handler_severity_filtering_error(event_bus):
+async def test_investigation_handler_severity_filtering_error(event_bus, mock_investigator):
     """Test filtering with ERROR minimum severity."""
     handler = InvestigationHandler(
         event_bus=event_bus,
         min_severity=Severity.ERROR,
+        investigator=mock_investigator,
     )
 
     # Create events

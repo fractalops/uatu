@@ -182,6 +182,7 @@ class InvestigationHandler(BaseHandler):
         event_bus: EventBus,
         min_severity: Severity = Severity.WARNING,
         investigation_logger: InvestigationLogger | None = None,
+        investigator: Investigator | None = None,
     ):
         """Initialize investigation handler.
 
@@ -189,9 +190,10 @@ class InvestigationHandler(BaseHandler):
             event_bus: Event bus to subscribe to
             min_severity: Minimum severity to trigger investigation (default: WARNING)
             investigation_logger: Logger for investigations (creates new one if None)
+            investigator: Investigator instance (creates new one if None)
         """
         self.event_bus = event_bus
-        self.investigator = Investigator()
+        self.investigator = investigator or Investigator()
         self.investigation_queue: asyncio.Queue[AnomalyEvent] = asyncio.Queue()
         self.min_severity = min_severity
         self.investigation_logger = investigation_logger or InvestigationLogger()
