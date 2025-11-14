@@ -139,3 +139,8 @@ uv run ruff format .
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+- [Claude Agent SDK for Python](https://github.com/anthropics/claude-agent-sdk-python) for building the agent.
+- [Typer](https://github.com/fastapi/typer) for the terminal UI
+- [Riche](https://github.com/Textualize/rich) for formatting text in the terminal.
