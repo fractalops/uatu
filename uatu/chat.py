@@ -14,7 +14,6 @@ from rich.live import Live
 from rich.markdown import Heading as RichHeading
 from rich.markdown import Markdown as RichMarkdown
 from rich.panel import Panel
-from rich.spinner import Spinner
 from rich.text import Text
 
 from uatu.allowlist import AllowlistManager
@@ -259,16 +258,15 @@ or ask you to investigate related issues."""
             await client.query(user_message)
 
             # Show spinner while waiting for response
-            with Live(
-                Spinner("dots", text="Thinking...", style="cyan"),
-                console=self.console,
-                transient=True,
-            ) as live:
+            status = self.console.status("[cyan]Pondering...", spinner="dots")
+            status.start()
+
+            try:
                 # Receive response
                 async for message in client.receive_response():
                     # Stop spinner on first response
                     if first_response:
-                        live.stop()
+                        status.stop()
                         first_response = False
 
                     if hasattr(message, "content"):
@@ -313,6 +311,10 @@ or ask you to investigate related issues."""
                                 # Other tools: Simple display
                                 else:
                                     self.console.print(f"[dim]→ {tool_name}[/dim]")
+            finally:
+                # Ensure status is stopped even if there's an error
+                if status._live.is_started:
+                    status.stop()
 
             # Display response
             if response_text:
