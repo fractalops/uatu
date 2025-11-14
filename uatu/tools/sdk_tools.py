@@ -32,8 +32,18 @@ _capabilities = ToolCapabilities.detect()
         "required": [],
     },
 )
-async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> list[dict[str, Any]]:
-    """List all running processes."""
+async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> dict[str, Any]:
+    """List all running processes.
+
+    Returns:
+        MCP-formatted response with content blocks.
+    """
+    # Handle potential empty dict or None values from MCP client
+    if isinstance(min_cpu_percent, dict) or min_cpu_percent is None:
+        min_cpu_percent = 0.0
+    if isinstance(min_memory_mb, dict) or min_memory_mb is None:
+        min_memory_mb = 0.0
+
     # Import here to keep logic in existing files
     if platform.system() == "Darwin":
         from uatu.tools.macos_tools import ListProcessesMac
@@ -44,7 +54,11 @@ async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.
 
         tool_impl = ListProcesses(_capabilities)
 
-    return tool_impl.execute(min_cpu_percent=min_cpu_percent, min_memory_mb=min_memory_mb)
+    result = tool_impl.execute(min_cpu_percent=float(min_cpu_percent), min_memory_mb=float(min_memory_mb))
+
+    # Return in MCP format
+    import json
+    return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
 @tool(
@@ -52,8 +66,18 @@ async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.
     description="Get system-wide CPU, memory, and load information. Returns current resource usage statistics.",
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_system_info() -> dict[str, Any]:
-    """Get system resource information."""
+async def get_system_info(*args, **kwargs) -> dict[str, Any]:
+    """Get system resource information.
+
+    Args:
+        *args: Accepts positional arguments for MCP compatibility but ignores them.
+        **kwargs: Accepts keyword arguments for MCP compatibility but ignores them.
+
+    Returns:
+        MCP-formatted response with content blocks.
+    """
+    # Ignore any arguments passed by MCP client (defensive programming)
+    # MCP server may pass empty dict as positional arg
     if platform.system() == "Darwin":
         from uatu.tools.macos_tools import GetSystemInfoMac
 
@@ -63,7 +87,11 @@ async def get_system_info() -> dict[str, Any]:
 
         tool_impl = GetSystemInfo(_capabilities)
 
-    return tool_impl.execute()
+    result = tool_impl.execute()
+
+    # Return in MCP format: {"content": [{"type": "text", "text": "..."}]}
+    import json
+    return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
 @tool(
@@ -72,8 +100,18 @@ async def get_system_info() -> dict[str, Any]:
     "to understand which processes spawned which others.",
     input_schema={"type": "object", "properties": {}, "required": []},
 )
-async def get_process_tree() -> dict[str, Any]:
-    """Get process tree showing parent-child relationships."""
+async def get_process_tree(*args, **kwargs) -> dict[str, Any]:
+    """Get process tree showing parent-child relationships.
+
+    Args:
+        *args: Accepts positional arguments for MCP compatibility but ignores them.
+        **kwargs: Accepts keyword arguments for MCP compatibility but ignores them.
+
+    Returns:
+        MCP-formatted response with content blocks.
+    """
+    # Ignore any arguments passed by MCP client (defensive programming)
+    # MCP server may pass empty dict as positional arg
     if platform.system() == "Darwin":
         from uatu.tools.macos_tools import GetProcessTreeMac
 
@@ -83,7 +121,11 @@ async def get_process_tree() -> dict[str, Any]:
 
         tool_impl = GetProcessTree(_capabilities)
 
-    return tool_impl.execute()
+    result = tool_impl.execute()
+
+    # Return in MCP format
+    import json
+    return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
 @tool(
@@ -101,8 +143,12 @@ async def get_process_tree() -> dict[str, Any]:
         "required": ["name"],
     },
 )
-async def find_process_by_name(name: str) -> list[dict[str, Any]]:
-    """Find processes by name."""
+async def find_process_by_name(name: str) -> dict[str, Any]:
+    """Find processes by name.
+
+    Returns:
+        MCP-formatted response with content blocks.
+    """
     if platform.system() == "Darwin":
         from uatu.tools.macos_tools import FindProcessByNameMac
 
@@ -112,7 +158,11 @@ async def find_process_by_name(name: str) -> list[dict[str, Any]]:
 
         tool_impl = FindProcessByName(_capabilities)
 
-    return tool_impl.execute(name=name)
+    result = tool_impl.execute(name=name)
+
+    # Return in MCP format
+    import json
+    return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
 @tool(
@@ -131,11 +181,19 @@ async def find_process_by_name(name: str) -> list[dict[str, Any]]:
     },
 )
 async def check_port_binding(port: int) -> dict[str, Any]:
-    """Check what process is using a specific port."""
+    """Check what process is using a specific port.
+
+    Returns:
+        MCP-formatted response with content blocks.
+    """
     from uatu.tools.command_tools import CheckPortBinding
 
     tool_impl = CheckPortBinding(_capabilities)
-    return tool_impl.execute(port=port)
+    result = tool_impl.execute(port=port)
+
+    # Return in MCP format
+    import json
+    return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
 @tool(
@@ -153,12 +211,19 @@ async def check_port_binding(port: int) -> dict[str, Any]:
         "required": ["path"],
     },
 )
-async def read_proc_file(path: str) -> str:
-    """Read /proc or /sys file (Linux only)."""
+async def read_proc_file(path: str) -> dict[str, Any]:
+    """Read /proc or /sys file (Linux only).
+
+    Returns:
+        MCP-formatted response with content blocks.
+    """
     if platform.system() == "Darwin":
-        return "Not available on macOS (no /proc filesystem)"
+        result = "Not available on macOS (no /proc filesystem)"
+    else:
+        from uatu.tools.proc_tools import ReadProcFile
 
-    from uatu.tools.proc_tools import ReadProcFile
+        tool_impl = ReadProcFile(_capabilities)
+        result = tool_impl.execute(path=path)
 
-    tool_impl = ReadProcFile(_capabilities)
-    return tool_impl.execute(path=path)
+    # Return in MCP format
+    return {"content": [{"type": "text", "text": str(result)}]}

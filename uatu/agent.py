@@ -54,20 +54,27 @@ Be concise but thorough. Focus on actionable insights."""
 
         # Note: API key is read from ANTHROPIC_API_KEY environment variable by SDK
         # Create agent options with MCP server
+
+        # Read-only tools safe for automatic use
+        allowed_tools = [
+            "mcp__system-tools__get_system_info",
+            "mcp__system-tools__list_processes",
+            "mcp__system-tools__get_process_tree",
+            "mcp__system-tools__find_process_by_name",
+            "mcp__system-tools__check_port_binding",
+            "mcp__system-tools__read_proc_file",
+        ]
+
+        # Use bypassPermissions for investigate mode since all tools are read-only
+        # Safety is enforced by limiting allowed_tools to read-only operations
+        # UATU_REQUIRE_APPROVAL doesn't apply here - no risky tools available
         options = ClaudeAgentOptions(
             model=self.settings.uatu_model,
             system_prompt=self.system_prompt,
             mcp_servers={"system-tools": create_system_tools_mcp_server()},
             max_turns=10,
-            # Explicitly allow all system monitoring tools (they're read-only and safe)
-            allowed_tools=[
-                "mcp__system-tools__get_system_info",
-                "mcp__system-tools__list_processes",
-                "mcp__system-tools__get_process_tree",
-                "mcp__system-tools__kill_process",
-                "mcp__system-tools__bash",
-            ],
-            permission_mode="bypassPermissions",  # Auto-approve for non-interactive mode
+            allowed_tools=allowed_tools,
+            permission_mode="bypassPermissions",
         )
 
         # Use SDK's query function

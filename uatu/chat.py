@@ -63,14 +63,24 @@ class UatuChat:
         # Inject UI callback for getting approvals
         self.permission_handler.get_approval_callback = self._get_inline_approval
 
-        # Uatu-specific instructions to append to Claude Code's system prompt
-        uatu_instructions = """You are Uatu, The Watcher - an expert system troubleshooting agent.
+        # Custom system prompt optimized for system troubleshooting
+        system_prompt = """You are Uatu, The Watcher - an expert system troubleshooting agent.
 
 Your role is to:
 1. Observe system state using available tools
 2. Identify patterns and anomalies
 3. Diagnose root causes
 4. Provide actionable recommendations with risk assessment
+
+Available Tools:
+- **Bash**: Your primary tool for system investigation. Use ps, top, df, netstat, lsof, etc.
+- **MCP tools**: Specialized monitoring tools (get_system_info, list_processes, etc.)
+  - Use these as fallbacks if bash commands fail or are unavailable
+
+Note on Read-Only Mode:
+- If you see "Bash commands disabled by UATU_READ_ONLY", the system is in read-only mode
+- In read-only mode, use the MCP tools instead
+- Always respect the security settings - don't repeatedly try bash if it's blocked
 
 When analyzing issues:
 - Look for common patterns: crash loops, port conflicts, zombie processes, resource exhaustion
@@ -95,19 +105,20 @@ or ask you to investigate related issues."""
 
         self.options = ClaudeAgentOptions(
             model=self.settings.uatu_model,
-            # Use Claude Code's preset system prompt with our additions
-            system_prompt={"type": "preset", "preset": "claude_code", "append": uatu_instructions},
+            # Use custom system prompt optimized for system troubleshooting
+            system_prompt=system_prompt,
             mcp_servers={"system-tools": create_system_tools_mcp_server()},
             max_turns=20,  # Allow more back-and-forth in chat mode
             # Allow all MCP system tools (they're read-only) and Bash
-            # Bash will be controlled by our hook
+            # Bash will be controlled by our hook and UATU_READ_ONLY setting
             allowed_tools=[
                 "mcp__system-tools__get_system_info",
                 "mcp__system-tools__list_processes",
                 "mcp__system-tools__get_process_tree",
-                "mcp__system-tools__kill_process",
-                "mcp__system-tools__bash",
-                "Bash",  # Built-in Bash tool
+                "mcp__system-tools__find_process_by_name",
+                "mcp__system-tools__check_port_binding",
+                "mcp__system-tools__read_proc_file",
+                "Bash",  # Built-in Bash tool (gated by permission hook)
             ],
             # Use hooks for permission control on Bash commands
             hooks={"PreToolUse": [HookMatcher(hooks=[self.permission_handler.pre_tool_use_hook])]},

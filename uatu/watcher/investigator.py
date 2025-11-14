@@ -143,6 +143,18 @@ Format your response in markdown with clear sections."""
 Please investigate this anomaly. Use tools if needed to gather more context."""
 
         # Create agent options with MCP server
+        # Watch mode uses read-only tools only for safety
+        allowed_tools = [
+            "mcp__system-tools__get_system_info",
+            "mcp__system-tools__list_processes",
+            "mcp__system-tools__get_process_tree",
+            "mcp__system-tools__find_process_by_name",
+            "mcp__system-tools__check_port_binding",
+            "mcp__system-tools__read_proc_file",
+        ]
+
+        # Use bypassPermissions for watch mode since all tools are read-only
+        # Safety is enforced by limiting allowed_tools to read-only operations
         options = ClaudeAgentOptions(
             api_key=self.settings.anthropic_api_key,
             model=self.settings.uatu_model,
@@ -151,6 +163,8 @@ Please investigate this anomaly. Use tools if needed to gather more context."""
             system_prompt=self.system_prompt,
             mcp_servers={"system-tools": create_system_tools_mcp_server()},
             max_turns=5,  # Limit investigation depth
+            allowed_tools=allowed_tools,
+            permission_mode="bypassPermissions",
         )
 
         # Use SDK's query function

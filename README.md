@@ -1,26 +1,45 @@
-# Uatu - The Watcher
+# Uatu
 
-An agentic system troubleshooting tool powered by Claude. Chat with your system, investigate issues with AI-powered analysis, and autonomously monitor for anomalies.
-
-## Why Uatu?
-
-Traditional monitoring tools alert you to problems. Uatu **understands** them.
-
+Your AI partner for system operations—from guided troubleshooting to autonomous problem-solving.
 
 **Core capabilities:**
-- Interactive chat mode for conversational system troubleshooting
-- One-shot investigations for specific symptoms
-- Continuous monitoring with adaptive baseline learning
-- Root cause analysis connecting CPU, memory, processes, and logs
-- Token-efficient caching and rate limiting for cost control
+- Chat with your system: Ask questions and get AI-powered analysis
+- One-shot investigations: Instant diagnosis for specific issues
+- Autonomous monitoring: Learn baselines and detect anomalies
+- Intelligent analysis: Connect CPU spikes, memory leaks, and process behavior
+- Cost-efficient: Prompt caching and smart rate limiting
 
 ## Installation
+
+### Using pipx (recommended)
+
+```bash
+# Install with pipx for isolated environment
+pipx install uatu
+
+# Configure API key
+echo "ANTHROPIC_API_KEY=your_key" > .env
+```
+
+### Using pip
+
+```bash
+# Install globally or in a virtual environment
+pip install uatu
+
+# Configure API key
+echo "ANTHROPIC_API_KEY=your_key" > .env
+```
+
+### From source with uv
 
 ```bash
 # Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies
+# Clone and install
+git clone https://github.com/fractalops/uatu.git
+cd uatu
 uv sync
 
 # Configure API key
@@ -34,7 +53,11 @@ echo "ANTHROPIC_API_KEY=your_key" > .env
 Start a conversational troubleshooting session:
 
 ```bash
+# Default (read-only, requires approval for bash commands)
 uv run uatu
+
+# Allow bash commands with approval prompts
+UATU_READ_ONLY=false uv run uatu
 ```
 
 Ask questions naturally and get AI-powered analysis:
@@ -42,6 +65,8 @@ Ask questions naturally and get AI-powered analysis:
 - "Why is my server running slowly?"
 - "Investigate recent memory issues"
 - "Check for network bottlenecks"
+
+**Security**: By default, bash commands require user approval. Set `UATU_READ_ONLY=false` in `.env` to enable bash (with approval prompts).
 
 ### One-Shot Investigation
 
@@ -54,10 +79,12 @@ uv run uatu investigate "memory leak suspected"
 ```
 
 The agent will:
-- Gather relevant system information
-- Analyze logs and metrics
+- Gather relevant system information using bash commands
+- Analyze patterns and correlate signals
 - Provide root cause analysis
 - Suggest actionable remediation steps
+
+**Best for**: Quick diagnostics, automation, scripting
 
 ### Continuous Monitoring
 
