@@ -12,6 +12,9 @@ Your AI partner for system operations—from guided troubleshooting to autonomou
 - Intelligent analysis: Connect CPU spikes, memory leaks, and process behavior
 - Cost-efficient: Prompt caching and smart rate limiting
 
+**Tested on Platforms:**
+- macOS
+- Linux
 
 ## Installation
 
