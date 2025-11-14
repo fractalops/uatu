@@ -3,12 +3,13 @@
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock
-
+import os
 import pytest
 
 from uatu.allowlist import AllowlistManager
 from uatu.permissions import PermissionHandler
 
+os.environ["ANTHROPIC_API_KEY"] = "test-key"
 
 @pytest.fixture
 def temp_config_dir():
