@@ -250,71 +250,86 @@ or ask you to investigate related issues."""
 
     async def _handle_message(self, client: ClaudeSDKClient, user_message: str) -> None:
         """Handle a user message and generate response."""
+        from rich.spinner import Spinner
+
         response_text = ""
-        first_response = True
+        live = None
 
         try:
+            # Create and start spinner before sending query
+            # transient=True makes the spinner disappear when stopped
+            spinner = Spinner("dots", text="[cyan]Pondering...")
+            live = Live(spinner, console=self.console, refresh_per_second=10, transient=True)
+            live.start()
+
             # Send query (context is maintained automatically)
             await client.query(user_message)
 
-            # Show spinner while waiting for response
-            status = self.console.status("[cyan]Pondering...", spinner="dots")
-            status.start()
+            # Receive response
+            async for message in client.receive_response():
+                message_has_text = False
+                message_has_tools = False
 
-            try:
-                # Receive response
-                async for message in client.receive_response():
-                    # Stop spinner on first response
-                    if first_response:
-                        status.stop()
-                        first_response = False
+                if hasattr(message, "content"):
+                    for block in message.content:
+                        if hasattr(block, "text"):
+                            # Stop spinner when we get text content
+                            if live and live.is_started:
+                                live.stop()
+                            response_text += block.text
+                            message_has_text = True
+                        # Show tool usage if present
+                        elif hasattr(block, "name"):
+                            # Stop spinner when we see tool usage (so we can print)
+                            if live and live.is_started:
+                                live.stop()
 
-                    if hasattr(message, "content"):
-                        for block in message.content:
-                            if hasattr(block, "text"):
-                                response_text += block.text
-                            # Show tool usage if present
-                            elif hasattr(block, "name"):
-                                tool_name = block.name
+                            message_has_tools = True
+                            tool_name = block.name
 
-                                # Bash commands: Show description + command
-                                if tool_name == "Bash" and hasattr(block, "input"):
+                            # Bash commands: Show description + command
+                            if tool_name == "Bash" and hasattr(block, "input"):
+                                tool_input = block.input
+                                command = tool_input.get("command", "")
+                                description = tool_input.get("description", "")
+
+                                # Show description as header if available
+                                if description:
+                                    self.console.print(f"[dim]→ {description}[/dim]")
+
+                                # Always show the actual command
+                                cmd_preview = command[:120]
+                                if len(command) > 120:
+                                    cmd_preview += "..."
+                                self.console.print(f"[dim]  $ {cmd_preview}[/dim]")
+
+                            # MCP tools: Show with MCP prefix and parameters
+                            elif tool_name.startswith("mcp__"):
+                                # Clean up name: mcp__system-tools__get_system_info -> Get System Info
+                                clean_name = tool_name.split("__")[-1].replace("_", " ").title()
+                                self.console.print(f"[dim]→ MCP: {clean_name}[/dim]")
+
+                                # Show key parameters if available
+                                if hasattr(block, "input"):
                                     tool_input = block.input
-                                    command = tool_input.get("command", "")
-                                    description = tool_input.get("description", "")
+                                    if tool_input:
+                                        # Show first 3 parameters
+                                        params = ", ".join(f"{k}={v}" for k, v in list(tool_input.items())[:3])
+                                        if params:
+                                            self.console.print(f"[dim]   ({params})[/dim]")
 
-                                    # Show description as header if available
-                                    if description:
-                                        self.console.print(f"[dim]→ {description}[/dim]")
+                            # Other tools: Simple display
+                            else:
+                                self.console.print(f"[dim]→ {tool_name}[/dim]")
 
-                                    # Always show the actual command
-                                    cmd_preview = command[:120]
-                                    if len(command) > 120:
-                                        cmd_preview += "..."
-                                    self.console.print(f"[dim]  $ {cmd_preview}[/dim]")
-
-                                # MCP tools: Show with MCP prefix and parameters
-                                elif tool_name.startswith("mcp__"):
-                                    # Clean up name: mcp__system-tools__get_system_info -> Get System Info
-                                    clean_name = tool_name.split("__")[-1].replace("_", " ").title()
-                                    self.console.print(f"[dim]→ MCP: {clean_name}[/dim]")
-
-                                    # Show key parameters if available
-                                    if hasattr(block, "input"):
-                                        tool_input = block.input
-                                        if tool_input:
-                                            # Show first 3 parameters
-                                            params = ", ".join(f"{k}={v}" for k, v in list(tool_input.items())[:3])
-                                            if params:
-                                                self.console.print(f"[dim]   ({params})[/dim]")
-
-                                # Other tools: Simple display
-                                else:
-                                    self.console.print(f"[dim]→ {tool_name}[/dim]")
-            finally:
-                # Ensure status is stopped even if there's an error
-                if status._live.is_started:
-                    status.stop()
+                # After processing all blocks, restart spinner if we just saw tools
+                # This ensures spinner shows while waiting for the next response
+                if message_has_tools and not message_has_text:
+                    # Add a small visual break before restarting spinner
+                    self.console.print()  # Blank line for breathing room
+                    # Restart spinner immediately after tools are shown
+                    if live and not live.is_started:
+                        live.start()
 
             # Display response
             if response_text:
@@ -325,6 +340,10 @@ or ask you to investigate related issues."""
                 self.console.print()
         except Exception as e:
             self.console.print(f"[red]Error: {e}[/red]")
+        finally:
+            # Ensure Live spinner is stopped
+            if live and live.is_started:
+                live.stop()
 
     async def _run_async(self) -> None:
         """Async chat loop with long-lived client."""

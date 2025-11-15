@@ -2,7 +2,7 @@
 
 Your AI partner for system operations—from guided troubleshooting to autonomous problem-solving.
 
-<img src="demo.gif" alt="autu-demo" width="2000"/>
+<img src="uatu.gif" alt="autu-demo" width="2000"/>
 
 
 **Core capabilities:**
