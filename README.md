@@ -1,6 +1,6 @@
 # Uatu
 
-Your AI partner for system operations—from guided troubleshooting to autonomous problem-solving.
+Your AI partner for system operations; from guided troubleshooting to autonomous problem-solving.
 
 <img src="uatu.gif" alt="autu-demo" width="2000"/>
 
@@ -10,7 +10,7 @@ Your AI partner for system operations—from guided troubleshooting to autonomou
 - One-shot investigations: Instant diagnosis for specific issues
 - Autonomous monitoring: Learn baselines and detect anomalies
 - Intelligent analysis: Connect CPU spikes, memory leaks, and process behavior
-- Cost-efficient: Prompt caching and smart rate limiting
+- Prompt caching
 
 **Tested on Platforms:**
 - macOS
