@@ -311,7 +311,9 @@ class TestNetworkCommandBlocklist:
 
         # Should not be denied (will go to user approval)
         if "permissionDecision" in result.get("hookSpecificOutput", {}):
-            assert result["hookSpecificOutput"]["permissionDecision"] != "deny" or "blocked" not in result["hookSpecificOutput"]["permissionDecisionReason"].lower()
+            assert result["hookSpecificOutput"][
+                "permissionDecision"] != "deny" or "blocked" not in result[
+            "hookSpecificOutput"]["permissionDecisionReason"].lower()
 
 
 class TestSuspiciousPatternDetection:

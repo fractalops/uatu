@@ -258,11 +258,11 @@ or ask you to investigate related issues."""
                 if base_cmd in AllowlistManager.SAFE_BASE_COMMANDS:
                     self.console.print(f"[green]✓ Allowed and added '{base_cmd}' to allowlist[/green]")
                 else:
-                    self.console.print(f"[green]✓ Allowed and added exact command to allowlist[/green]")
+                    self.console.print("[green]✓ Allowed and added exact command to allowlist[/green]")
             else:
-                self.console.print(f"[green]✓ Allowed once[/green]")
+                self.console.print("[green]✓ Allowed once[/green]")
         else:
-            self.console.print(f"[red]✗ Denied[/red]")
+            self.console.print("[red]✗ Denied[/red]")
         self.console.print()
 
         return (approved, add_to_allowlist)
