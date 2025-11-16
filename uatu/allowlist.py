@@ -31,6 +31,33 @@ class AllowlistManager:
         "journalctl",
     }
 
+    # Network commands that can exfiltrate data (blocked for security)
+    BLOCKED_NETWORK_COMMANDS = {
+        "curl",
+        "wget",
+        "nc",
+        "ssh",
+        "scp",
+        "rsync",
+        "ftp",
+        "telnet",
+    }
+
+    # Suspicious patterns that indicate potential security issues
+    # Even if base command is safe, these patterns force user approval
+    SUSPICIOUS_PATTERNS = [
+        r"\|.*curl",       # Piping to curl
+        r"\|.*wget",       # Piping to wget
+        r"\|.*nc\b",       # Piping to netcat
+        r"\|.*ssh",        # Piping to ssh
+        r"grep.*password", # Searching for passwords
+        r"grep.*secret",   # Searching for secrets
+        r"grep.*key",      # Searching for keys
+        r"base64",         # Encoding (often used in exfiltration)
+        r"xxd",            # Hex encoding
+        r"\$\(",           # Command substitution in arguments
+    ]
+
     def __init__(self, config_dir: Path | None = None) -> None:
         """Initialize the allowlist manager.
 

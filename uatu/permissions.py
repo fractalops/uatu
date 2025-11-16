@@ -1,6 +1,7 @@
 """Permission handling for Uatu using SDK hooks."""
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -71,8 +72,10 @@ class PermissionHandler:
 
         logger.debug(f"Permission check for command: {command!r}")
 
-        # Check UATU_READ_ONLY setting - deny all bash commands if set
+        # Get settings once for all checks
         settings = get_settings()
+
+        # Check UATU_READ_ONLY setting - deny all bash commands if set
         if settings.uatu_read_only:
             logger.info(f"Command denied by UATU_READ_ONLY setting: {command!r}")
             return {
@@ -83,16 +86,38 @@ class PermissionHandler:
                 }
             }
 
-        # Check allowlist first
-        if self.allowlist.is_allowed(command):
-            logger.info(f"Command auto-allowed (allowlisted): {command!r}")
-            return {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "allow",
-                    "message": "Command auto-allowed (allowlisted)",
+        # Check for blocked network commands
+        base_cmd = AllowlistManager.get_base_command(command)
+        if base_cmd in AllowlistManager.BLOCKED_NETWORK_COMMANDS:
+            if not settings.uatu_allow_network:
+                logger.info(f"Network command blocked: {command!r}")
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": f"Network command '{base_cmd}' blocked for security. Set UATU_ALLOW_NETWORK=true to override (not recommended).",
+                    }
                 }
-            }
+            else:
+                logger.warning(f"Network command allowed by UATU_ALLOW_NETWORK: {command!r}")
+
+        # Check for suspicious patterns (even if base command is safe)
+        for pattern in AllowlistManager.SUSPICIOUS_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                logger.warning(f"Suspicious pattern detected in command: {command!r}")
+                # Force user approval - skip allowlist check
+                break
+        else:
+            # No suspicious patterns found - check allowlist if UATU_REQUIRE_APPROVAL allows it
+            if not settings.uatu_require_approval and self.allowlist.is_allowed(command):
+                logger.info(f"Command auto-allowed (allowlisted): {command!r}")
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "message": "Command auto-allowed (allowlisted)",
+                    }
+                }
 
         # Need user approval - delegate to callback
         if not self.get_approval_callback:

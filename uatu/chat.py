@@ -62,6 +62,9 @@ class UatuChat:
         # Inject UI callback for getting approvals
         self.permission_handler.get_approval_callback = self._get_inline_approval
 
+        # Lock to serialize approval prompts (only one at a time)
+        self._approval_lock = asyncio.Lock()
+
         # Custom system prompt optimized for system troubleshooting
         system_prompt = """You are Uatu, The Watcher - an expert system troubleshooting agent.
 
@@ -246,6 +249,22 @@ or ask you to investigate related issues."""
         # 0 = Allow, 1 = Always allow, 2 = Deny
         approved = result in [0, 1]
         add_to_allowlist = result == 1
+
+        # Show clear confirmation of what was decided
+        self.console.print()
+        if approved:
+            if add_to_allowlist:
+                base_cmd = AllowlistManager.get_base_command(command)
+                if base_cmd in AllowlistManager.SAFE_BASE_COMMANDS:
+                    self.console.print(f"[green]✓ Allowed and added '{base_cmd}' to allowlist[/green]")
+                else:
+                    self.console.print(f"[green]✓ Allowed and added exact command to allowlist[/green]")
+            else:
+                self.console.print(f"[green]✓ Allowed once[/green]")
+        else:
+            self.console.print(f"[red]✗ Denied[/red]")
+        self.console.print()
+
         return (approved, add_to_allowlist)
 
     async def _handle_message(self, client: ClaudeSDKClient, user_message: str) -> None:
