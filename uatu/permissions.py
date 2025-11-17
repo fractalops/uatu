@@ -225,11 +225,14 @@ class PermissionHandler:
 
         if not approved:
             logger.info(f"Command denied by user: {command!r}")
+            # Include risk category in denial reason to help agent understand context
+            _, risk_text, _ = AllowlistManager.detect_risk_category(command)
+            denial_reason = f"User declined to execute bash command (Risk: {risk_text})"
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": "User declined to execute bash command",
+                    "permissionDecisionReason": denial_reason,
                 }
             }
 
@@ -314,6 +317,11 @@ class PermissionHandler:
         if self.network_allowlist.is_domain_allowed(url):
             domain = NetworkAllowlistManager.extract_domain(url)
             logger.info(f"Network access auto-allowed (domain allowlisted): {domain}")
+            self.auditor.log_network_auto_approved(
+                tool_name=tool_name,
+                url=url,
+                domain=domain,
+            )
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
@@ -338,6 +346,15 @@ class PermissionHandler:
         domain = NetworkAllowlistManager.extract_domain(url)
         logger.debug(f"Requesting user approval for network access: {url!r}")
         approved, add_to_allowlist = await self.get_network_approval_callback(tool_name, url)
+
+        # Log approval decision
+        self.auditor.log_network_approval(
+            tool_name=tool_name,
+            url=url,
+            domain=domain,
+            approved=approved,
+            added_to_allowlist=add_to_allowlist,
+        )
 
         if not approved:
             logger.info(f"Network access denied by user: {url!r}")

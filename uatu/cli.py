@@ -9,7 +9,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from uatu.agent import UatuAgent
-from uatu.chat import LeftAlignedMarkdown, UatuChat
+from uatu.audit_cli import audit_command
+from uatu.chat import UatuChat
+from uatu.ui import LeftAlignedMarkdown
 from uatu.watcher import AsyncWatcher, Watcher
 
 app = typer.Typer(
@@ -361,6 +363,10 @@ def events(
     console.print()
     console.print(f"[dim]Total events logged: {len(events_list)}[/dim]")
     console.print(f"[dim]Log file: {log_file}[/dim]")
+
+
+# Register audit command
+app.command(name="audit")(audit_command)
 
 
 if __name__ == "__main__":

@@ -471,10 +471,85 @@ Even safe commands flagged if used suspiciously:
 
 ## Logging & Audit Trail
 
+### Security Audit Log [Implemented]
+
+**Location**: `~/.uatu/security.jsonl`
+
 **What gets logged**:
-- All tool calls with parameters (`--log` in watch mode)
-- Investigation results (`--investigation-log`)
-- Bash command approvals/denials (in chat mode)
+- Bash command approvals/denials
+- Network access approvals (WebFetch, WebSearch)
+- SSRF blocks and security violations
+- Suspicious pattern detections
+- Allowlist modifications
+- All permission decisions with timestamps
+
+**Event Types**:
+```python
+# Bash command events
+"bash_command_approval"         # User approved/denied command
+"bash_command_denied"           # Auto-denied (READ_ONLY, no callback, etc.)
+"bash_command_auto_approved"    # Auto-approved from allowlist
+
+# Network access events
+"network_access_approval"        # User approved/denied network access
+"network_access_auto_approved"   # Auto-approved from domain allowlist
+"ssrf_blocked"                   # SSRF attempt blocked (severity: high)
+"network_command_blocked"        # curl/wget/nc blocked (severity: medium)
+
+# Security events
+"suspicious_pattern_detected"    # Composition attack flagged (severity: medium)
+"allowlist_modified"             # Command allowlist changed
+"network_allowlist_modified"     # Domain allowlist changed
+```
+
+**CLI Commands**:
+```bash
+# View recent audit events
+uatu audit
+
+# Show security summary statistics
+uatu audit --summary
+
+# Filter by event type
+uatu audit --type bash_command_approval
+
+# Show last 50 events
+uatu audit --last 50
+```
+
+**Example Event**:
+```json
+{
+  "timestamp": "2025-01-17T10:30:45.123456",
+  "event_type": "bash_command_approval",
+  "command": "git status",
+  "description": "Check git status",
+  "approved": true,
+  "added_to_allowlist": true
+}
+```
+
+**SSRF Block Example**:
+```json
+{
+  "timestamp": "2025-01-17T10:31:12.456789",
+  "event_type": "ssrf_blocked",
+  "tool": "WebFetch",
+  "url": "http://169.254.169.254/latest/meta-data/",
+  "reason": "Access to cloud metadata endpoint blocked",
+  "severity": "high"
+}
+```
+
+### Other Logs
+
+**Watch Mode**:
+- Anomaly events: `~/.uatu/events.jsonl` (`--log` flag)
+- Investigation results: `~/.uatu/investigations.jsonl` (`--investigation-log`)
+
+**What gets logged**:
+- All tool calls with parameters
+- Investigation results
 - Errors and exceptions
 
 **Sensitive data handling**:
@@ -486,6 +561,7 @@ Even safe commands flagged if used suspiciously:
 - Review logs before sharing
 - Rotate logs regularly
 - Restrict log file permissions (600)
+- Monitor security.jsonl for suspicious patterns
 
 ## API Key Security
 
@@ -551,11 +627,13 @@ Even safe commands flagged if used suspiciously:
    - HEAD-only HTTP requests for endpoint checks
    - Safe alternative to bash network commands
 
-4. **Enhanced audit logging**
+4. **Enhanced audit logging** [Implemented]
    - Security event log: `~/.uatu/security.jsonl`
-   - Log command approvals/denials in chat mode
-   - Log allowlist modifications
-   - Structured events for SIEM integration
+   - Logs command approvals/denials, network access, SSRF blocks
+   - Logs allowlist modifications
+   - Structured JSONL events for SIEM integration
+   - CLI: `uatu audit` for viewing logs and statistics
+   - Location: `audit.py`, `audit_cli.py`, `permissions.py` (integrated)
 
 5. **Trust verification**
    - Environment fingerprinting (hostname + user + cwd hash)

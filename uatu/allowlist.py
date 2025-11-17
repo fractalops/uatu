@@ -58,6 +58,59 @@ class AllowlistManager:
         r"\$\(",           # Command substitution in arguments
     ]
 
+    # Patterns that indicate credential/secret access attempts
+    # These get special warning treatment in the UI
+    CREDENTIAL_ACCESS_PATTERNS = [
+        r"\.ssh",                    # SSH directory access
+        r"id_rsa",                   # SSH private key
+        r"id_ecdsa",                 # SSH ECDSA key
+        r"id_ed25519",               # SSH Ed25519 key
+        r"\.pem\b",                  # PEM certificates/keys
+        r"\.key\b",                  # Generic key files
+        r"\.p12\b",                  # PKCS12 certificates
+        r"\.pfx\b",                  # PFX certificates
+        r"authorized_keys",          # SSH authorized keys
+        r"known_hosts",              # SSH known hosts
+        r"\.aws/credentials",        # AWS credentials
+        r"\.kube/config",            # Kubernetes config
+        r"\.docker/config\.json",    # Docker credentials
+        r"\.npmrc",                  # NPM credentials
+        r"\.pypirc",                 # PyPI credentials
+        r"\.netrc",                  # Generic credentials file
+        r"\.git-credentials",        # Git credentials
+        r"\.env",                    # Environment files (often contain secrets)
+        r"password",                 # Password in command
+        r"secret",                   # Secret in command
+        r"token",                    # Token in command
+        r"api[_-]?key",              # API key patterns
+    ]
+
+    # Patterns for destructive operations
+    # These get high-risk warnings in the UI
+    DESTRUCTIVE_PATTERNS = [
+        r"rm\s+.*-r",                           # Recursive delete
+        r"dd\s+.*of=/dev/",                     # Writing to block devices
+        r"mkfs",                                # Format filesystem
+        r"fdisk",                               # Partition manipulation
+        r"shred",                               # Secure file deletion
+        r">/dev/sd[a-z]",                       # Writing to disk devices
+        r"truncate.*>",                         # File truncation
+        r":\(\)\{.*:\|:.*\};:",                # Fork bomb pattern
+    ]
+
+    # Patterns for privilege escalation or system modification
+    SYSTEM_MODIFICATION_PATTERNS = [
+        r"sudo\s+",                   # Sudo usage
+        r"chmod\s+[0-7]{3,4}",       # Permission changes
+        r"chown\s+",                  # Ownership changes
+        r"chgrp\s+",                  # Group changes
+        r"usermod",                   # User modification
+        r"passwd",                    # Password changes
+        r"visudo",                    # Sudoers editing
+        r"/etc/shadow",               # Shadow file access
+        r"/etc/passwd",               # Passwd file modification
+    ]
+
     def __init__(self, config_dir: Path | None = None) -> None:
         """Initialize the allowlist manager.
 
@@ -108,6 +161,77 @@ class AllowlistManager:
             The base command, or empty string if command is empty
         """
         return command.split()[0] if command and command.strip() else ""
+
+    @classmethod
+    def detect_risk_category(cls, command: str) -> tuple[str, str, str]:
+        """Detect risk category and return risk level, text, and warning.
+
+        Args:
+            command: The command to analyze
+
+        Returns:
+            Tuple of (risk_style, risk_text, warning_message)
+            - risk_style: Rich style string for coloring
+            - risk_text: Short risk level text
+            - warning_message: Detailed warning or empty string
+
+        Examples:
+            >>> AllowlistManager.detect_risk_category("ls -la ~/.ssh")
+            ('red bold', 'Credential Access', 'This command may access SSH keys or certificates')
+            >>> AllowlistManager.detect_risk_category("rm -rf /data")
+            ('red bold', 'Destructive', 'This command can permanently delete files')
+            >>> AllowlistManager.detect_risk_category("ps aux")
+            ('green', 'Standard', '')
+        """
+        import re
+
+        # Check for credential access patterns (highest priority warning)
+        for pattern in cls.CREDENTIAL_ACCESS_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                return (
+                    "red bold",
+                    "Credential Access",
+                    "This command may access SSH keys, certificates, or other credentials",
+                )
+
+        # Check for destructive patterns
+        for pattern in cls.DESTRUCTIVE_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                return (
+                    "red bold",
+                    "Destructive",
+                    "This command can permanently delete or modify data",
+                )
+
+        # Check for system modification patterns
+        for pattern in cls.SYSTEM_MODIFICATION_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                return (
+                    "yellow bold",
+                    "System Modification",
+                    "This command will modify system configuration or permissions",
+                )
+
+        # Check base command for network commands
+        base_cmd = cls.get_base_command(command)
+        if base_cmd in cls.BLOCKED_NETWORK_COMMANDS:
+            return (
+                "yellow bold",
+                "Network Command",
+                "This command can transfer data over the network",
+            )
+
+        # Check for other suspicious patterns
+        for pattern in cls.SUSPICIOUS_PATTERNS:
+            if re.search(pattern, command, re.IGNORECASE):
+                return (
+                    "yellow",
+                    "Suspicious Pattern",
+                    "This command contains patterns that may indicate security risks",
+                )
+
+        # No special patterns detected
+        return ("green", "Standard", "")
 
     def is_allowed(self, command: str) -> bool:
         """Check if a command is allowed.
