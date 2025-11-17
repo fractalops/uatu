@@ -18,6 +18,7 @@ from rich.text import Text
 
 from uatu.allowlist import AllowlistManager
 from uatu.config import get_settings
+from uatu.network_allowlist import NetworkAllowlistManager
 from uatu.permissions import PermissionHandler
 from uatu.tools import create_system_tools_mcp_server
 
@@ -57,10 +58,11 @@ class UatuChat:
         self.settings = get_settings()
         self.console = Console()
 
-        # Initialize permission handler with allowlist
+        # Initialize permission handler with allowlists
         self.permission_handler = PermissionHandler()
-        # Inject UI callback for getting approvals
+        # Inject UI callbacks for getting approvals
         self.permission_handler.get_approval_callback = self._get_inline_approval
+        self.permission_handler.get_network_approval_callback = self._get_network_approval
 
         # Lock to serialize approval prompts (only one at a time)
         self._approval_lock = asyncio.Lock()
@@ -111,8 +113,9 @@ or ask you to investigate related issues."""
             system_prompt=system_prompt,
             mcp_servers={"system-tools": create_system_tools_mcp_server()},
             max_turns=20,  # Allow more back-and-forth in chat mode
-            # Allow all MCP system tools (they're read-only) and Bash
+            # Allow all MCP system tools (they're read-only), Bash, and network tools
             # Bash will be controlled by our hook and UATU_READ_ONLY setting
+            # WebFetch and WebSearch are gated by network permission hook
             allowed_tools=[
                 "mcp__system-tools__get_system_info",
                 "mcp__system-tools__list_processes",
@@ -121,6 +124,8 @@ or ask you to investigate related issues."""
                 "mcp__system-tools__check_port_binding",
                 "mcp__system-tools__read_proc_file",
                 "Bash",  # Built-in Bash tool (gated by permission hook)
+                "WebFetch",  # Built-in URL fetching (gated by network permission hook)
+                "WebSearch",  # Built-in web search (gated by network permission hook)
             ],
             # Use hooks for permission control on Bash commands
             hooks={"PreToolUse": [HookMatcher(hooks=[self.permission_handler.pre_tool_use_hook])]},
@@ -263,6 +268,142 @@ or ask you to investigate related issues."""
                 self.console.print("[green]✓ Allowed once[/green]")
         else:
             self.console.print("[red]✗ Denied[/red]")
+        self.console.print()
+
+        return (approved, add_to_allowlist)
+
+    def _render_network_approval_options(self, selected_index: int, url: str) -> Text:
+        """Render network approval options with current selection highlighted."""
+        domain = NetworkAllowlistManager.extract_domain(url)
+        options = Text()
+
+        # Allow option
+        if selected_index == 0:
+            options.append("  → ", style="green bold")
+            options.append("Allow once\n", style="green")
+        else:
+            options.append("  ○ ", style="dim")
+            options.append("Allow once\n", style="dim")
+
+        # Always allow option - show what domain will be allowlisted
+        always_text = f"Allow '{domain}' (add to allowlist)\n"
+
+        if selected_index == 1:
+            options.append("  → ", style="cyan bold")
+            options.append(always_text, style="cyan")
+        else:
+            options.append("  ○ ", style="dim")
+            options.append(always_text, style="dim")
+
+        # Deny option
+        if selected_index == 2:
+            options.append("  → ", style="red bold")
+            options.append("Deny\n", style="red")
+        else:
+            options.append("  ○ ", style="dim")
+            options.append("Deny\n", style="dim")
+
+        options.append("\n(Use ↑↓ arrow keys, Enter to confirm)", style="dim")
+        return options
+
+    async def _get_network_approval(self, tool_name: str, url: str) -> tuple[bool, bool]:
+        """Get user approval for network access with inline arrow-key navigation.
+
+        Returns:
+            Tuple of (approved, add_to_allowlist)
+        """
+        import threading
+        import time
+
+        from prompt_toolkit.application import Application
+        from prompt_toolkit.layout import Layout
+        from prompt_toolkit.widgets import Label
+
+        domain = NetworkAllowlistManager.extract_domain(url)
+
+        # Show network access details (static part)
+        self.console.print()
+        self.console.print("[yellow][!] Network access requested[/yellow]")
+        self.console.print(f"[dim]Tool:   {tool_name}[/dim]")
+        self.console.print(f"[dim]URL:    {url}[/dim]")
+        self.console.print(f"[dim]Domain: {domain}[/dim]")
+        self.console.print()
+        self.console.print("[yellow]⚠  This will fetch content from the internet[/yellow]")
+        self.console.print()
+
+        # Track selection state
+        selected = [2]  # Start with "Deny" (index 2)
+        running = [True]  # Track if we're still running
+
+        # Create key bindings for arrow navigation
+        kb = KeyBindings()
+
+        @kb.add(Keys.Up)
+        def _(event):
+            selected[0] = max(0, selected[0] - 1)
+
+        @kb.add(Keys.Down)
+        def _(event):
+            selected[0] = min(2, selected[0] + 1)
+
+        @kb.add(Keys.Enter)
+        def _(event):
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("c-c")  # Ctrl+C
+        def _(event):
+            running[0] = False
+            event.app.exit(result=2)  # Deny on cancel
+
+        # Create minimal application for key capture
+        app = Application(
+            layout=Layout(Label("")),
+            key_bindings=kb,
+            full_screen=False,
+            mouse_support=False,
+        )
+
+        # Use Rich Live to update the selection display
+        with Live(
+            self._render_network_approval_options(selected[0], url),
+            console=self.console,
+            refresh_per_second=20,
+        ) as live:
+            # Run app in a separate thread and update display
+            def run_app():
+                return app.run()
+
+            def update_display():
+                """Continuously update the display while running."""
+                while running[0]:
+                    live.update(self._render_network_approval_options(selected[0], url))
+                    time.sleep(0.05)  # Update every 50ms
+
+            # Run app and update loop concurrently
+            update_thread = threading.Thread(target=update_display, daemon=True)
+            update_thread.start()
+
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, run_app)
+
+            # Stop the update thread
+            running[0] = False
+            update_thread.join(timeout=0.5)
+
+        # 0 = Allow, 1 = Always allow, 2 = Deny
+        approved = result in [0, 1]
+        add_to_allowlist = result == 1
+
+        # Show clear confirmation of what was decided
+        self.console.print()
+        if approved:
+            if add_to_allowlist:
+                self.console.print(f"[green]✓ Allowed and added '{domain}' to network allowlist[/green]")
+            else:
+                self.console.print("[green]✓ Network access allowed once[/green]")
+        else:
+            self.console.print("[red]✗ Network access denied[/red]")
         self.console.print()
 
         return (approved, add_to_allowlist)

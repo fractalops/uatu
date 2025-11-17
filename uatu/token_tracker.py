@@ -38,7 +38,7 @@ class TokenUsage:
 
     def display_summary(self, budget: int | None = None) -> None:
         """
-        Display token usage summary in Claude Code style.
+        Display token usage summary.
 
         Args:
             budget: Optional token budget limit for context
@@ -59,7 +59,7 @@ class TokenUsage:
 
         usage_str = " + ".join(parts)
 
-        # Display in Claude Code style
+
         if budget and remaining is not None:
             console.print(f"[dim]Token usage: {usage_str} = {total:,}/{budget:,}; {remaining:,} remaining[/dim]")
         else:
@@ -67,7 +67,7 @@ class TokenUsage:
 
     def display_per_turn(self, turn: int, input_tokens: int, output_tokens: int, cache_read: int = 0) -> None:
         """
-        Display token usage for a single turn in Claude Code style.
+        Display token usage for a single turn.
 
         Args:
             turn: The turn number

