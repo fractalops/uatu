@@ -4,4 +4,4 @@ Uatu - The Watcher
 An agentic system troubleshooting tool powered by Claude.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
