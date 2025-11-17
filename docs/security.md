@@ -579,21 +579,8 @@ If you discover a security vulnerability in Uatu:
 1. **Do not** open a public issue
 2. Email: [Maintainer email from pyproject.toml]
 3. Include: Description, steps to reproduce, impact assessment
-4. Allow time for patch before public disclosure
+4. Allow time for patch before public Disclosure
 
-## Security Checklist
-
-Before deploying Uatu in production:
-
-- [ ] Run as non-root user when possible
-- [ ] Set `UATU_READ_ONLY=true` if no writes needed
-- [ ] Secure `.env` file (chmod 600)
-- [ ] Review allowlist regularly
-- [ ] Rotate logs and restrict permissions
-- [ ] Test in safe environment first
-- [ ] Document approved use cases for your team
-- [ ] Set up log monitoring/alerting
-- [ ] Consider container deployment for isolation
 
 ## Security Best Practices for Users
 
