@@ -142,13 +142,6 @@ ls -la ~/.ssh/
   → Deny
 ```
 
-**Risk levels:**
-- **Credential Access**: SSH keys, API tokens, certificates
-- **Destructive**: rm -rf, dd, filesystem operations
-- **System Modification**: sudo, chmod, passwd changes
-- **Network Command**: curl, wget, ssh (blocked by default)
-- **Standard**: Read-only diagnostic commands
-
 ### Audit Logging
 
 All security decisions are logged:
@@ -178,13 +171,6 @@ cat ~/.config/uatu/allowlist.json
 /allowlist remove <pattern>             # Remove pattern from allowlist
 /allowlist clear                        # Clear all entries
 ```
-
-**Security**: The `/allowlist add` command validates security before adding:
-- ✗ Blocks: Credential access, destructive, network commands, suspicious patterns
-- ⚠ Warns: System modification (but allows)
-- ✓ Allows: Safe diagnostic commands
-
-**Tab Completion**: Type `/` and press Tab to see available slash commands with descriptions.
 
 ## Development
 
