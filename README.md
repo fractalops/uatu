@@ -6,9 +6,9 @@ Your AI partner for system operations and troubleshooting.
 
 
 **Core capabilities:**
-- Chat with your system: Ask questions and get AI-powered analysis
-- One-shot investigations: Instant diagnosis for specific issues
-- [WIP] Autonomous monitoring: Learn baselines and detect anomalies
+- Interactive chat: Conversational troubleshooting with your system
+- Stdin mode: Pipe logs and data for instant AI analysis
+- Security-first: Granular command approval and allowlist system
 - Intelligent analysis: Connect CPU spikes, memory leaks, and process behavior
 
 **Tested on Platforms:**
@@ -59,53 +59,53 @@ echo "ANTHROPIC_API_KEY=your_key" > .env
 Start a conversational troubleshooting session:
 
 ```bash
-# Default (read-only, requires approval for bash commands)
-uv run uatu
+# Default mode
+uatu
 
 # Allow bash commands with approval prompts
-UATU_READ_ONLY=false uv run uatu
+UATU_READ_ONLY=false uatu
 ```
 
-Ask questions naturally and get AI-powered analysis:
+Ask questions naturally and get AI-powered system analysis:
 - "What's causing high CPU usage?"
 - "Why is my server running slowly?"
 - "Investigate recent memory issues"
-- "Check for network bottlenecks"
+- "What's listening on port 8080?"
 
-**Security**: By default, bash commands require user approval. Set `UATU_READ_ONLY=false` in `.env` to enable bash (with approval prompts).
+**Security**: Bash commands require user approval. Use `UATU_READ_ONLY=true` for read-only mode (MCP tools only).
 
-### One-Shot Investigation
+### Stdin Mode (One-Shot Analysis)
 
-Investigate a specific symptom immediately:
-
-```bash
-uv run uatu investigate "server running slowly"
-uv run uatu investigate "high CPU usage"
-uv run uatu investigate "memory leak suspected"
-```
-
-The agent will:
-- Gather relevant system information using bash commands
-- Analyze patterns and correlate signals
-- Provide root cause analysis
-- Suggest actionable remediation steps
-
-**Best for**: Quick diagnostics, automation, scripting
-
-### Continuous Monitoring
-
-Watch your system and detect anomalies autonomously:
+Pipe system data directly for instant troubleshooting:
 
 ```bash
-# Fast testing (1 minute baseline)
-uv run uatu watch --baseline 1
+# Analyze application logs
+cat /var/log/app.log | uatu "find errors and suggest fixes"
 
-# Production monitoring (5 minute baseline, default)
-uv run uatu watch
+# Investigate crashed process
+journalctl -u myservice --since "1 hour ago" | uatu "why did this crash?"
 
-# With AI investigation of detected anomalies
-uv run uatu watch --investigate
+# Debug high memory usage
+ps aux --sort=-%mem | head -20 | uatu "diagnose memory issues"
+
+# Network troubleshooting
+netstat -tulpn | uatu "find port conflicts"
 ```
+
+**For automated monitoring/scripts:**
+
+```bash
+# Read-only mode (safest for automation)
+UATU_READ_ONLY=true tail -100 /var/log/syslog | uatu "check for issues"
+
+# Trust allowlist (requires pre-approved commands)
+UATU_REQUIRE_APPROVAL=false dmesg | uatu "check hardware errors"
+```
+
+**Workflow for scripts:**
+1. Run `uatu` interactively first
+2. Approve diagnostic commands with "Always allow"
+3. Use `UATU_REQUIRE_APPROVAL=false` in scripts to trust allowlist
 
 
 ## Configuration
@@ -120,12 +120,76 @@ ANTHROPIC_API_KEY=your_key
 UATU_MODEL=claude-sonnet-4-5-20250929  # Claude model to use
 UATU_READ_ONLY=true                     # Agent can only read, not modify system
 UATU_REQUIRE_APPROVAL=true              # Require approval for risky actions
+UATU_ALLOW_NETWORK=false                # Block network commands (curl, wget, etc.)
 ```
+
+## Security Features
+
+### Command Approval System
+
+All bash commands require approval unless allowlisted:
+
+```bash
+⚠ Bash command approval required
+Risk: Credential Access
+
+⚠ Warning: This command may access SSH keys, certificates, or other credentials
+
+ls -la ~/.ssh/
+
+  ○ Allow once
+  ○ Always allow (exact)
+  → Deny
+```
+
+**Risk levels:**
+- **Credential Access**: SSH keys, API tokens, certificates
+- **Destructive**: rm -rf, dd, filesystem operations
+- **System Modification**: sudo, chmod, passwd changes
+- **Network Command**: curl, wget, ssh (blocked by default)
+- **Standard**: Read-only diagnostic commands
+
+### Audit Logging
+
+All security decisions are logged:
+
+```bash
+# View audit log
+uatu audit show
+
+# View recent events
+uatu audit show --last 20
+
+# View specific event types
+uatu audit show --type bash_approval
+```
+
+### Allowlist Management
+
+View and manage approved commands:
+
+```bash
+# View allowlist
+cat ~/.config/uatu/allowlist.json
+
+# Interactive chat commands (with tab completion)
+/allowlist                              # Show approved commands
+/allowlist add <command>                # Add command to allowlist
+/allowlist remove <pattern>             # Remove pattern from allowlist
+/allowlist clear                        # Clear all entries
+```
+
+**Security**: The `/allowlist add` command validates security before adding:
+- ✗ Blocks: Credential access, destructive, network commands, suspicious patterns
+- ⚠ Warns: System modification (but allows)
+- ✓ Allows: Safe diagnostic commands
+
+**Tab Completion**: Type `/` and press Tab to see available slash commands with descriptions.
 
 ## Development
 
 ```bash
-# Run tests (20 unit tests)
+# Run tests
 uv run pytest
 
 # Lint

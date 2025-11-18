@@ -1,9 +1,9 @@
 [project]
 name = "uatu"
-version = "0.1.4"
+version = "0.1.5"
 description = "The Watcher - An agentic system troubleshooting tool powered by Claude"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "fractalops", email = "jstbillz@gmail.com"}

@@ -48,7 +48,7 @@ def validate_url(url: str) -> tuple[bool, str]:
             (False, 'Access to localhost blocked (SSRF protection)')
             >>> validate_url("http://192.168.1.1")
             (False, 'Access to private IP blocked (SSRF protection): 192.168.1.1')
-        """
+    """
     if not url or not url.strip():
         return False, "URL cannot be empty"
 
@@ -132,7 +132,7 @@ def sanitize_headers(headers: dict) -> dict:
             True
             >>> "x-custom" in sanitized
             False
-        """
+    """
     # Allowlist of safe headers to include
     safe_headers = {
         "content-type",
@@ -177,7 +177,7 @@ def is_valid_hostname(hostname: str) -> bool:
             True
             >>> is_valid_hostname("not valid")
             False
-        """
+    """
     if not hostname or len(hostname) > 253:
         return False
 
@@ -209,7 +209,7 @@ def is_valid_ip(ip_str: str) -> bool:
             True
             >>> is_valid_ip("not an ip")
             False
-        """
+    """
     try:
         ipaddress.ip_address(ip_str)
         return True

@@ -58,6 +58,7 @@ async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.
 
     # Return in MCP format
     import json
+
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
@@ -91,6 +92,7 @@ async def get_system_info(*args, **kwargs) -> dict[str, Any]:
 
     # Return in MCP format: {"content": [{"type": "text", "text": "..."}]}
     import json
+
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
@@ -125,6 +127,7 @@ async def get_process_tree(*args, **kwargs) -> dict[str, Any]:
 
     # Return in MCP format
     import json
+
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
@@ -162,6 +165,7 @@ async def find_process_by_name(name: str) -> dict[str, Any]:
 
     # Return in MCP format
     import json
+
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
@@ -193,6 +197,7 @@ async def check_port_binding(port: int) -> dict[str, Any]:
 
     # Return in MCP format
     import json
+
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 

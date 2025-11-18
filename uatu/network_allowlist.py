@@ -148,11 +148,9 @@ class NetworkAllowlistManager:
         self.allowlist.setdefault("domains", []).append(domain)
 
         # Add timestamp for audit trail
-        self.allowlist.setdefault("history", []).append({
-            "domain": domain,
-            "added": datetime.now().isoformat(),
-            "action": "added"
-        })
+        self.allowlist.setdefault("history", []).append(
+            {"domain": domain, "added": datetime.now().isoformat(), "action": "added"}
+        )
 
         self._save_allowlist()
 
@@ -183,11 +181,9 @@ class NetworkAllowlistManager:
             logger.info(f"Removed domain from network allowlist: {domain}")
 
             # Add to history
-            self.allowlist.setdefault("history", []).append({
-                "domain": domain,
-                "removed": datetime.now().isoformat(),
-                "action": "removed"
-            })
+            self.allowlist.setdefault("history", []).append(
+                {"domain": domain, "removed": datetime.now().isoformat(), "action": "removed"}
+            )
 
             self._save_allowlist()
             return True

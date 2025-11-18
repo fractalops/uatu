@@ -162,7 +162,7 @@ class PermissionHandler:
                         "hookEventName": "PreToolUse",
                         "permissionDecision": "deny",
                         "permissionDecisionReason": f"Network command '{base_cmd}' blocked for security."
-                                                    f"Set UATU_ALLOW_NETWORK=true to override (not recommended).",
+                        f"Set UATU_ALLOW_NETWORK=true to override (not recommended).",
                     }
                 }
             else:

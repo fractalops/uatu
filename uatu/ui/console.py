@@ -21,8 +21,7 @@ class ConsoleRenderer:
         """Show welcome message for interactive chat."""
         self.console.print(
             Panel.fit(
-                "[bold blue]Uatu - The Watcher[/bold blue]\n"
-                "[dim]Interactive System Troubleshooting Assistant[/dim]",
+                "[bold blue]Uatu - The Watcher[/bold blue]\n[dim]Interactive System Troubleshooting Assistant[/dim]",
                 border_style="blue",
             )
         )

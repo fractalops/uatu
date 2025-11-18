@@ -66,6 +66,8 @@ class SlashCommandHandler:
 
         if len(parts) == 1:
             self._show_allowlist()
+        elif parts[1] == "add" and len(parts) == 3:
+            self._add_to_allowlist(parts[2])
         elif parts[1] == "clear":
             self._clear_allowlist()
         elif parts[1] == "remove" and len(parts) == 3:
@@ -102,6 +104,61 @@ class SlashCommandHandler:
             table.add_row(pattern, entry_type, added)
 
         self.console.print(table)
+
+    def _add_to_allowlist(self, command: str) -> None:
+        """Add command to allowlist with security validation.
+
+        Args:
+            command: Command to add
+        """
+        from uatu.allowlist import AllowlistManager
+
+        # Strip surrounding quotes if present
+        command = command.strip().strip('"').strip("'")
+
+        # Security validation - reject high-risk commands
+        risk_style, risk_text, warning = AllowlistManager.detect_risk_category(command)
+
+        # Reject credential access and destructive commands
+        if risk_text in ["Credential Access", "Destructive"]:
+            self.console.print(f"[red]✗ Cannot add to allowlist: {risk_text}[/red]")
+            self.console.print(f"[red]  {warning}[/red]")
+            self.console.print("\n[yellow]High-risk commands must be approved interactively during use.[/yellow]")
+            return
+
+        # Warn about system modification but allow
+        if risk_text == "System Modification":
+            self.console.print(f"[yellow]⚠ Warning: {risk_text}[/yellow]")
+            self.console.print(f"[yellow]  {warning}[/yellow]")
+
+        # Check for blocked network commands
+        base_cmd = AllowlistManager.get_base_command(command)
+        if base_cmd in AllowlistManager.BLOCKED_NETWORK_COMMANDS:
+            self.console.print(f"[red]✗ Cannot add network command to allowlist: {base_cmd}[/red]")
+            self.console.print("[yellow]Network commands are blocked by default for security.[/yellow]")
+            self.console.print("[yellow]Use UATU_ALLOW_NETWORK=true to enable network commands.[/yellow]")
+            return
+
+        # Check for suspicious patterns
+        if risk_text == "Suspicious Pattern":
+            self.console.print(f"[red]✗ Cannot add to allowlist: {risk_text}[/red]")
+            self.console.print(f"[red]  {warning}[/red]")
+            return
+
+        # Add to allowlist
+        try:
+            self.permission_handler.allowlist.add_command(command)
+            self.console.print(f"[green]✓ Added to allowlist: {command}[/green]")
+
+            # Show what was actually added
+            entries = self.permission_handler.allowlist.get_entries()
+            latest = entries[-1] if entries else None
+            if latest:
+                entry_type = latest.get("type", "exact")
+                pattern = latest.get("pattern", command)
+                self.console.print(f"[dim]  Pattern: {pattern} (type: {entry_type})[/dim]")
+        except ValueError as e:
+            self.console.print(f"[red]✗ Error: {e}[/red]")
 
     def _clear_allowlist(self) -> None:
         """Clear all allowlist entries."""

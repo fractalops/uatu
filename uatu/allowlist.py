@@ -46,69 +46,69 @@ class AllowlistManager:
     # Suspicious patterns that indicate potential security issues
     # Even if base command is safe, these patterns force user approval
     SUSPICIOUS_PATTERNS = [
-        r"\|.*curl",       # Piping to curl
-        r"\|.*wget",       # Piping to wget
-        r"\|.*nc\b",       # Piping to netcat
-        r"\|.*ssh",        # Piping to ssh
-        r"grep.*password", # Searching for passwords
-        r"grep.*secret",   # Searching for secrets
-        r"grep.*key",      # Searching for keys
-        r"base64",         # Encoding (often used in exfiltration)
-        r"xxd",            # Hex encoding
-        r"\$\(",           # Command substitution in arguments
+        r"\|.*curl",  # Piping to curl
+        r"\|.*wget",  # Piping to wget
+        r"\|.*nc\b",  # Piping to netcat
+        r"\|.*ssh",  # Piping to ssh
+        r"grep.*password",  # Searching for passwords
+        r"grep.*secret",  # Searching for secrets
+        r"grep.*key",  # Searching for keys
+        r"base64",  # Encoding (often used in exfiltration)
+        r"xxd",  # Hex encoding
+        r"\$\(",  # Command substitution in arguments
     ]
 
     # Patterns that indicate credential/secret access attempts
     # These get special warning treatment in the UI
     CREDENTIAL_ACCESS_PATTERNS = [
-        r"\.ssh",                    # SSH directory access
-        r"id_rsa",                   # SSH private key
-        r"id_ecdsa",                 # SSH ECDSA key
-        r"id_ed25519",               # SSH Ed25519 key
-        r"\.pem\b",                  # PEM certificates/keys
-        r"\.key\b",                  # Generic key files
-        r"\.p12\b",                  # PKCS12 certificates
-        r"\.pfx\b",                  # PFX certificates
-        r"authorized_keys",          # SSH authorized keys
-        r"known_hosts",              # SSH known hosts
-        r"\.aws/credentials",        # AWS credentials
-        r"\.kube/config",            # Kubernetes config
-        r"\.docker/config\.json",    # Docker credentials
-        r"\.npmrc",                  # NPM credentials
-        r"\.pypirc",                 # PyPI credentials
-        r"\.netrc",                  # Generic credentials file
-        r"\.git-credentials",        # Git credentials
-        r"\.env",                    # Environment files (often contain secrets)
-        r"password",                 # Password in command
-        r"secret",                   # Secret in command
-        r"token",                    # Token in command
-        r"api[_-]?key",              # API key patterns
+        r"\.ssh",  # SSH directory access
+        r"id_rsa",  # SSH private key
+        r"id_ecdsa",  # SSH ECDSA key
+        r"id_ed25519",  # SSH Ed25519 key
+        r"\.pem\b",  # PEM certificates/keys
+        r"\.key\b",  # Generic key files
+        r"\.p12\b",  # PKCS12 certificates
+        r"\.pfx\b",  # PFX certificates
+        r"authorized_keys",  # SSH authorized keys
+        r"known_hosts",  # SSH known hosts
+        r"\.aws/credentials",  # AWS credentials
+        r"\.kube/config",  # Kubernetes config
+        r"\.docker/config\.json",  # Docker credentials
+        r"\.npmrc",  # NPM credentials
+        r"\.pypirc",  # PyPI credentials
+        r"\.netrc",  # Generic credentials file
+        r"\.git-credentials",  # Git credentials
+        r"\.env",  # Environment files (often contain secrets)
+        r"password",  # Password in command
+        r"secret",  # Secret in command
+        r"token",  # Token in command
+        r"api[_-]?key",  # API key patterns
     ]
 
     # Patterns for destructive operations
     # These get high-risk warnings in the UI
     DESTRUCTIVE_PATTERNS = [
-        r"rm\s+.*-r",                           # Recursive delete
-        r"dd\s+.*of=/dev/",                     # Writing to block devices
-        r"mkfs",                                # Format filesystem
-        r"fdisk",                               # Partition manipulation
-        r"shred",                               # Secure file deletion
-        r">/dev/sd[a-z]",                       # Writing to disk devices
-        r"truncate.*>",                         # File truncation
-        r":\(\)\{.*:\|:.*\};:",                # Fork bomb pattern
+        r"rm\s+.*-r",  # Recursive delete
+        r"dd\s+.*of=/dev/",  # Writing to block devices
+        r"mkfs",  # Format filesystem
+        r"fdisk",  # Partition manipulation
+        r"shred",  # Secure file deletion
+        r">/dev/sd[a-z]",  # Writing to disk devices
+        r"truncate.*>",  # File truncation
+        r":\(\)\{.*:\|:.*\};:",  # Fork bomb pattern
     ]
 
     # Patterns for privilege escalation or system modification
     SYSTEM_MODIFICATION_PATTERNS = [
-        r"sudo\s+",                   # Sudo usage
-        r"chmod\s+[0-7]{3,4}",       # Permission changes
-        r"chown\s+",                  # Ownership changes
-        r"chgrp\s+",                  # Group changes
-        r"usermod",                   # User modification
-        r"passwd",                    # Password changes
-        r"visudo",                    # Sudoers editing
-        r"/etc/shadow",               # Shadow file access
-        r"/etc/passwd",               # Passwd file modification
+        r"sudo\s+",  # Sudo usage
+        r"chmod\s+[0-7]{3,4}",  # Permission changes
+        r"chown\s+",  # Ownership changes
+        r"chgrp\s+",  # Group changes
+        r"usermod",  # User modification
+        r"passwd",  # Password changes
+        r"visudo",  # Sudoers editing
+        r"/etc/shadow",  # Shadow file access
+        r"/etc/passwd",  # Passwd file modification
     ]
 
     def __init__(self, config_dir: Path | None = None) -> None:

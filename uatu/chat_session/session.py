@@ -5,6 +5,7 @@ import asyncio
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.styles import Style as PromptStyle
 from rich.console import Console
 
@@ -13,7 +14,7 @@ from uatu.chat_session.handlers import MessageHandler
 from uatu.config import get_settings
 from uatu.permissions import PermissionHandler
 from uatu.tools import create_system_tools_mcp_server
-from uatu.ui import ApprovalPrompt, ConsoleRenderer
+from uatu.ui import ApprovalPrompt, ConsoleRenderer, SlashCommandCompleter
 
 
 class ChatSession:
@@ -158,10 +159,22 @@ or ask you to investigate related issues."""
 
     async def _run_async(self) -> None:
         """Run async chat loop."""
-        # Setup prompt session
+        # Setup prompt session with autocompletion
         session: PromptSession[str] = PromptSession(
             history=InMemoryHistory(),
-            style=PromptStyle.from_dict({"prompt": "ansicyan bold"}),
+            style=PromptStyle.from_dict(
+                {
+                    "prompt": "ansicyan bold",
+                    # Minimal styling for completion menu
+                    "completion-menu": "bg:#1c1c1c #888888",  # Dark gray background, light gray text
+                    "completion-menu.completion.current": "bg:#262626 #ffffff",  # Slightly lighter for selection
+                    "completion-menu.meta.completion.current": "bg:#262626 #666666",  # Dimmer meta text
+                    "completion-menu.meta": "#666666",  # Dim meta text
+                }
+            ),
+            completer=SlashCommandCompleter(),
+            complete_while_typing=True,  # Show completions automatically when typing /
+            complete_style=CompleteStyle.COLUMN,  # Single column for minimal look
         )
 
         # Create long-lived client for conversation context
@@ -193,6 +206,53 @@ or ask you to investigate related issues."""
                 except Exception as e:
                     self.renderer.error(str(e))
                     continue
+
+    async def run_oneshot(self, prompt: str) -> None:
+        """Run a single query and exit (stdin mode).
+
+        Args:
+            prompt: The query to send to Claude
+        """
+        try:
+            # Create client with same options as interactive mode
+            async with ClaudeSDKClient(self.options) as client:
+                # Send query
+                await client.query(prompt)
+
+                # Collect and display response using existing message handler
+                response_text = ""
+                async for message in client.receive_response():
+                    if hasattr(message, "content"):
+                        for block in message.content:
+                            # Text content
+                            if hasattr(block, "text"):
+                                response_text += block.text
+
+                            # Tool usage - show inline
+                            elif hasattr(block, "name"):
+                                tool_name = block.name
+                                tool_input = block.input if hasattr(block, "input") else {}
+
+                                # Show tool usage (same as interactive mode)
+                                self.renderer.show_tool_usage(tool_name, tool_input)
+
+                # Display final response (same as interactive mode)
+                if response_text:
+                    self.console.print()
+                    self.console.print("[dim]─────────────────────────────────────────[/dim]")
+                    self.console.print("[bold cyan]Uatu:[/bold cyan]")
+                    self.console.print()
+                    from uatu.ui.markdown import LeftAlignedMarkdown
+
+                    md = LeftAlignedMarkdown(response_text)
+                    self.console.print(md)
+                    self.console.print()
+                    self.console.print("[dim]─────────────────────────────────────────[/dim]")
+                    self.console.print()
+
+        except Exception as e:
+            self.renderer.error(str(e))
+            raise
 
     def run(self) -> None:
         """Run the interactive chat session."""
