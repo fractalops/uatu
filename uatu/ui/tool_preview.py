@@ -183,7 +183,7 @@ class ToolPreviewFormatter:
     @classmethod
     def _format_default_preview(cls, response: Any) -> str:
         """Format generic response preview."""
-        if isinstance(response, (list, tuple)):
+        if isinstance(response, list | tuple):
             return f"✓ {len(response)} items"
 
         elif isinstance(response, dict):
@@ -202,7 +202,7 @@ class ToolPreviewFormatter:
             else:
                 return f"✓ {response[:cls.MAX_PREVIEW_LENGTH - 3]}..."
 
-        elif isinstance(response, (int, float)):
+        elif isinstance(response, int | float):
             return f"✓ {response}"
 
         elif response is None:
