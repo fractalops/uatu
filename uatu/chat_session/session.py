@@ -2,19 +2,14 @@
 
 import asyncio
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
+from claude_agent_sdk import ClaudeSDKClient
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.styles import Style as PromptStyle
-from rich.console import Console
 
-from uatu.chat_session.commands import SlashCommandHandler
-from uatu.chat_session.handlers import MessageHandler
-from uatu.config import get_settings
-from uatu.permissions import PermissionHandler
-from uatu.tools import create_system_tools_mcp_server
-from uatu.ui import ApprovalPrompt, ConsoleRenderer, SlashCommandCompleter
+from uatu.chat_session.components import SessionComponents
+from uatu.ui import SlashCommandCompleter
 
 
 class ChatSession:
@@ -115,47 +110,14 @@ Communication style:
 Remember: You're in an interactive chat. Users can ask follow-up questions, request more details,
 or ask you to investigate related issues."""
 
-    def __init__(self):
-        """Initialize chat session."""
-        self.settings = get_settings()
-        self.console = Console()
+    def __init__(self, components: SessionComponents | None = None):
+        """Initialize chat session.
 
-        # UI components
-        self.approval_prompt = ApprovalPrompt(self.console)
-        self.renderer = ConsoleRenderer(self.console)
-
-        # Permission handler with UI callbacks
-        self.permission_handler = PermissionHandler()
-        self.permission_handler.get_approval_callback = self.approval_prompt.get_bash_approval
-        self.permission_handler.get_network_approval_callback = self.approval_prompt.get_network_approval
-
-        # Command and message handlers
-        self.command_handler = SlashCommandHandler(self.permission_handler, self.console)
-        self.message_handler = MessageHandler(self.console)
-
-        # Lock for serializing approval prompts
+        Args:
+            components: Session components container. If None, creates default components.
+        """
+        self.components = components or SessionComponents.create_default(self.SYSTEM_PROMPT)
         self._approval_lock = asyncio.Lock()
-
-        # Claude SDK options
-        self.options = ClaudeAgentOptions(
-            model=self.settings.uatu_model,
-            system_prompt=self.SYSTEM_PROMPT,
-            mcp_servers={"system-tools": create_system_tools_mcp_server()},
-            max_turns=20,
-            allowed_tools=[
-                "mcp__system-tools__get_system_info",
-                "mcp__system-tools__list_processes",
-                "mcp__system-tools__get_process_tree",
-                "mcp__system-tools__find_process_by_name",
-                "mcp__system-tools__check_port_binding",
-                "mcp__system-tools__read_proc_file",
-                "Bash",
-                "WebFetch",
-                "WebSearch",
-            ],
-            hooks={"PreToolUse": [HookMatcher(hooks=[self.permission_handler.pre_tool_use_hook])]},
-            stderr=lambda msg: self.console.print(f"[dim red]SDK: {msg}[/dim red]"),
-        )
 
     async def _run_async(self) -> None:
         """Run async chat loop."""
@@ -177,35 +139,41 @@ or ask you to investigate related issues."""
             complete_style=CompleteStyle.COLUMN,  # Single column for minimal look
         )
 
-        # Create long-lived client for conversation context
-        async with ClaudeSDKClient(self.options) as client:
-            while True:
-                try:
-                    # Get user input
-                    loop = asyncio.get_event_loop()
-                    user_input = await loop.run_in_executor(None, session.prompt, "You: ")
+        # Outer loop: recreate client when context is cleared
+        while True:
+            # Create long-lived client for conversation context
+            async with ClaudeSDKClient(self.components.sdk_options) as client:
+                # Inner loop: handle conversation
+                while True:
+                    try:
+                        # Get user input
+                        loop = asyncio.get_event_loop()
+                        user_input = await loop.run_in_executor(None, session.prompt, "You: ")
 
-                    if not user_input.strip():
+                        if not user_input.strip():
+                            continue
+
+                        # Handle slash commands
+                        if user_input.startswith("/"):
+                            result = self.components.command_handler.handle_command(user_input)
+                            if result == "exit":
+                                return  # Exit completely
+                            elif result == "clear":
+                                break  # Break inner loop to recreate client
+                            # result == "continue" - keep going
+                            continue
+
+                        # Handle regular message
+                        await self.components.message_handler.handle_message(client, user_input)
+
+                    except KeyboardInterrupt:
+                        self.components.console.print("\n[yellow]Use /exit to quit[/yellow]")
                         continue
-
-                    # Handle slash commands
-                    if user_input.startswith("/"):
-                        should_continue = self.command_handler.handle_command(user_input)
-                        if not should_continue:
-                            break
+                    except EOFError:
+                        return  # Exit completely
+                    except Exception as e:
+                        self.components.renderer.error(str(e))
                         continue
-
-                    # Handle regular message
-                    await self.message_handler.handle_message(client, user_input)
-
-                except KeyboardInterrupt:
-                    self.console.print("\n[yellow]Use /exit to quit[/yellow]")
-                    continue
-                except EOFError:
-                    break
-                except Exception as e:
-                    self.renderer.error(str(e))
-                    continue
 
     async def run_oneshot(self, prompt: str) -> None:
         """Run a single query and exit (stdin mode).
@@ -215,7 +183,7 @@ or ask you to investigate related issues."""
         """
         try:
             # Create client with same options as interactive mode
-            async with ClaudeSDKClient(self.options) as client:
+            async with ClaudeSDKClient(self.components.sdk_options) as client:
                 # Send query
                 await client.query(prompt)
 
@@ -234,30 +202,30 @@ or ask you to investigate related issues."""
                                 tool_input = block.input if hasattr(block, "input") else {}
 
                                 # Show tool usage (same as interactive mode)
-                                self.renderer.show_tool_usage(tool_name, tool_input)
+                                self.components.renderer.show_tool_usage(tool_name, tool_input)
 
                 # Display final response (same as interactive mode)
                 if response_text:
-                    self.console.print()
-                    self.console.print("[dim]─────────────────────────────────────────[/dim]")
-                    self.console.print("[bold cyan]Uatu:[/bold cyan]")
-                    self.console.print()
+                    self.components.console.print()
+                    self.components.console.print("[dim]─────────────────────────────────────────[/dim]")
+                    self.components.console.print("[bold cyan]Uatu:[/bold cyan]")
+                    self.components.console.print()
                     from uatu.ui.markdown import LeftAlignedMarkdown
 
                     md = LeftAlignedMarkdown(response_text)
-                    self.console.print(md)
-                    self.console.print()
-                    self.console.print("[dim]─────────────────────────────────────────[/dim]")
-                    self.console.print()
+                    self.components.console.print(md)
+                    self.components.console.print()
+                    self.components.console.print("[dim]─────────────────────────────────────────[/dim]")
+                    self.components.console.print()
 
         except Exception as e:
-            self.renderer.error(str(e))
+            self.components.renderer.error(str(e))
             raise
 
     def run(self) -> None:
         """Run the interactive chat session."""
         # Show welcome
-        self.renderer.show_welcome()
+        self.components.renderer.show_welcome()
 
         # Run async loop
         asyncio.run(self._run_async())

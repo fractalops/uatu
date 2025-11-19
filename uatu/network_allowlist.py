@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from uatu.exceptions import InvalidURLError
+
 logger = logging.getLogger(__name__)
 
 
@@ -136,7 +138,7 @@ class NetworkAllowlistManager:
             domain = url_or_domain
 
         if not domain or not domain.strip():
-            raise ValueError("Domain cannot be empty")
+            raise InvalidURLError("Domain cannot be empty")
 
         # Check if already exists
         if domain in self.allowlist.get("domains", []):

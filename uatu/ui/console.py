@@ -1,9 +1,14 @@
 """Reusable console UI components and utilities."""
 
+from typing import Any
+
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
+
+from uatu.tools.constants import Tools
+from uatu.ui.tool_preview import ToolPreviewFormatter
 
 
 class ConsoleRenderer:
@@ -38,6 +43,7 @@ class ConsoleRenderer:
                 "[bold]Available Commands:[/bold]\n\n"
                 "/help             - Show this help message\n"
                 "/exit             - Exit the chat\n"
+                "/clear            - Clear conversation context (start fresh)\n"
                 "/allowlist        - Show allowlisted commands\n"
                 "/allowlist clear  - Clear all allowlist entries\n"
                 "/allowlist remove <pattern> - Remove a specific entry\n\n"
@@ -89,7 +95,7 @@ class ConsoleRenderer:
             tool_input: Optional tool input parameters
         """
         # Bash commands: Show description + command
-        if tool_name == "Bash" and tool_input:
+        if tool_name == Tools.BASH and tool_input:
             command = tool_input.get("command", "")
             description = tool_input.get("description", "")
 
@@ -112,7 +118,7 @@ class ConsoleRenderer:
                     self.console.print(f"[dim]   ({params})[/dim]")
 
         # Network tools: Show with spinner indicator
-        elif tool_name in ("WebFetch", "WebSearch"):
+        elif Tools.is_network_tool(tool_name):
             self.console.print(f"[dim]→ {tool_name}[/dim]")
             if tool_input:
                 url_or_query = tool_input.get("url") or tool_input.get("query", "")
@@ -125,6 +131,18 @@ class ConsoleRenderer:
         # Other tools
         else:
             self.console.print(f"[dim]→ {tool_name}[/dim]")
+
+    def show_tool_result(self, tool_name: str, tool_response: Any) -> None:
+        """Display tool result preview.
+
+        Args:
+            tool_name: Name of the tool that was executed
+            tool_response: The tool's response data
+        """
+        preview = ToolPreviewFormatter.format_preview(tool_name, tool_response)
+        if preview:
+            # Indent the preview slightly for hierarchy
+            self.console.print(f"[dim]  {preview}[/dim]")
 
     def error(self, message: str) -> None:
         """Show error message."""

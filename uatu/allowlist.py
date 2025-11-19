@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from uatu.exceptions import InvalidCommandError
+
 logger = logging.getLogger(__name__)
 
 
@@ -299,7 +301,7 @@ class AllowlistManager:
         """
         # Input validation
         if not command or not command.strip():
-            raise ValueError("Command cannot be empty")
+            raise InvalidCommandError("Command cannot be empty")
 
         if "\n" in command or "\r" in command:
             logger.warning(f"Command contains newlines: {command!r}")

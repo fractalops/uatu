@@ -1,11 +1,15 @@
 """Slash command handling for chat interface."""
 
 from datetime import datetime
+from typing import Literal
 
 from rich.console import Console
 from rich.table import Table
 
 from uatu.permissions import PermissionHandler
+
+# Command result type
+CommandResult = Literal["continue", "exit", "clear"]
 
 
 class SlashCommandHandler:
@@ -21,33 +25,33 @@ class SlashCommandHandler:
         self.permission_handler = permission_handler
         self.console = console
 
-    def handle_command(self, command: str) -> bool:
+    def handle_command(self, command: str) -> CommandResult:
         """Handle a slash command.
 
         Args:
             command: The slash command (e.g., "/help", "/exit")
 
         Returns:
-            True if command was handled, False if should exit
+            Command result: "continue", "exit", or "clear"
         """
         if command == "/exit" or command == "/quit":
             self.console.print("[yellow]Goodbye![/yellow]")
-            return False
+            return "exit"
 
         if command == "/help":
             self._show_help()
-            return True
+            return "continue"
 
         if command == "/clear":
-            self.console.print("[yellow]/clear not supported - restart chat to clear context[/yellow]")
-            return True
+            self.console.print("[cyan]✓ Clearing conversation context...[/cyan]")
+            return "clear"
 
         if command.startswith("/allowlist"):
             self._handle_allowlist(command)
-            return True
+            return "continue"
 
         self.console.print(f"[red]Unknown command: {command}[/red]")
-        return True
+        return "continue"
 
     def _show_help(self) -> None:
         """Show help message."""

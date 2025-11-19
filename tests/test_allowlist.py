@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from uatu.allowlist import AllowlistManager
+from uatu.exceptions import InvalidCommandError
 
 
 @pytest.fixture
@@ -113,13 +114,13 @@ class TestAddCommand:
         assert entries[0]["type"] == "base"
 
     def test_empty_command_raises_error(self, manager):
-        """Adding empty command should raise ValueError."""
-        with pytest.raises(ValueError, match="Command cannot be empty"):
+        """Adding empty command should raise InvalidCommandError."""
+        with pytest.raises(InvalidCommandError, match="Command cannot be empty"):
             manager.add_command("")
 
     def test_whitespace_command_raises_error(self, manager):
-        """Adding whitespace-only command should raise ValueError."""
-        with pytest.raises(ValueError, match="Command cannot be empty"):
+        """Adding whitespace-only command should raise InvalidCommandError."""
+        with pytest.raises(InvalidCommandError, match="Command cannot be empty"):
             manager.add_command("   ")
 
     def test_add_dangerous_command_auto_detects_exact(self, manager):

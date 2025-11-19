@@ -45,6 +45,12 @@ class Settings(BaseSettings):
         description="If true, allow network commands (curl, wget, etc.) - NOT RECOMMENDED",
     )
 
+    # UI Settings
+    uatu_show_tool_previews: bool = Field(
+        default=True,
+        description="If true, show one-line previews of tool results in the UI",
+    )
+
 
 def get_settings() -> Settings:
     """Get settings instance (lazy-loaded)."""

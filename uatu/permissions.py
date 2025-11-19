@@ -13,6 +13,7 @@ from uatu.audit import SecurityAuditor
 from uatu.config import get_settings
 from uatu.network_allowlist import NetworkAllowlistManager
 from uatu.network_security import validate_url
+from uatu.tools.constants import Tools
 
 logger = logging.getLogger(__name__)
 
@@ -117,11 +118,11 @@ class PermissionHandler:
         tool_input = input_data.get("tool_input", {})
 
         # Handle WebFetch and WebSearch
-        if tool_name in ("WebFetch", "WebSearch"):
+        if Tools.is_network_tool(tool_name):
             return await self._handle_network_tool(tool_name, tool_input)
 
         # Only handle Bash commands - everything else is read-only monitoring
-        if tool_name != "Bash" and "bash" not in tool_name.lower():
+        if not Tools.is_bash_tool(tool_name):
             return {}  # Allow
 
         command = tool_input.get("command", "")
