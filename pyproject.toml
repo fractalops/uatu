@@ -57,7 +57,7 @@ dev = [
 ]
 
 [project.scripts]
-uatu = "uatu.cli:app"
+uatu = "uatu.cli:cli_main"
 
 [build-system]
 requires = ["hatchling"]

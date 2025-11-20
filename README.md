@@ -82,14 +82,14 @@ Pipe system data directly for instant troubleshooting:
 # Analyze application logs
 cat /var/log/app.log | uatu "find errors and suggest fixes"
 
-# Investigate crashed process
+# Investigate crashed process (Linux)
 journalctl -u myservice --since "1 hour ago" | uatu "why did this crash?"
 
 # Debug high memory usage
-ps aux --sort=-%mem | head -20 | uatu "diagnose memory issues"
+ps aux | head -20 | uatu "diagnose memory issues"
 
 # Network troubleshooting
-netstat -tulpn | uatu "find port conflicts"
+lsof -i -P -n | uatu "find port conflicts"
 ```
 
 **For automated monitoring/scripts:**
@@ -147,14 +147,17 @@ ls -la ~/.ssh/
 All security decisions are logged:
 
 ```bash
-# View audit log
-uatu audit show
+# View audit log (last 100 events)
+uatu audit
 
 # View recent events
-uatu audit show --last 20
+uatu audit --last 20
 
 # View specific event types
-uatu audit show --type bash_approval
+uatu audit --type bash_command_approval
+
+# View summary statistics
+uatu audit --summary
 ```
 
 ### Allowlist Management

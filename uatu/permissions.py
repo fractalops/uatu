@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any
 
 from claude_agent_sdk import HookContext
+from rich.console import Console
 
 from uatu.allowlist import AllowlistManager
 from uatu.audit import SecurityAuditor
@@ -72,6 +73,7 @@ class PermissionHandler:
         allowlist: AllowlistManager | None = None,
         network_allowlist: NetworkAllowlistManager | None = None,
         auditor: SecurityAuditor | None = None,
+        console: Console | None = None,
     ):
         """Initialize permission handler.
 
@@ -79,8 +81,10 @@ class PermissionHandler:
             allowlist: Optional allowlist manager. Creates new one if not provided.
             network_allowlist: Optional network allowlist manager. Creates new one if not provided.
             auditor: Optional security auditor. Creates new one if not provided.
+            console: Optional rich console for user-friendly messages. Creates new one if not provided.
         """
         self.allowlist = allowlist or AllowlistManager()
+        self.console = console or Console()
         self.network_allowlist = network_allowlist or NetworkAllowlistManager()
         self.auditor = auditor or SecurityAuditor()
         # Callbacks for getting user approval - injected from UI layer
@@ -141,6 +145,11 @@ class PermissionHandler:
                 reason="UATU_READ_ONLY setting enabled",
                 description=description,
             )
+
+            # Show user-friendly blocked message
+            truncated_cmd = command[:60] + "..." if len(command) > 60 else command
+            self.console.print(f"[yellow]  ⚠ Blocked: {truncated_cmd}[/yellow]")
+
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",

@@ -50,7 +50,7 @@ class SessionComponents:
         renderer = ConsoleRenderer(console)
 
         # Permission handler with callbacks wired
-        permission_handler = PermissionHandler()
+        permission_handler = PermissionHandler(console=console)
         permission_handler.get_approval_callback = approval_prompt.get_bash_approval
         permission_handler.get_network_approval_callback = approval_prompt.get_network_approval
 

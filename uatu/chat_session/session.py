@@ -28,6 +28,11 @@ Available Tools:
 - **Bash**: Your primary tool for system investigation. Use ps, top, df, netstat, lsof, etc.
 - **MCP tools**: Specialized monitoring tools (get_system_info, list_processes, etc.)
   - Use these as fallbacks if bash commands fail or are unavailable
+  - IMPORTANT: When using list_processes, ALWAYS use aggressive filters to avoid token overflow:
+    * For high-memory processes: min_memory_mb=100 or higher (NOT 0)
+    * For high-CPU processes: min_cpu_percent=5 or higher (NOT 0)
+    * Never call list_processes without filters - responses can exceed 70k tokens
+    * If you get a token overflow error, increase the filter threshold immediately
 - **WebFetch**: Fetch documentation, API endpoints, or check service status
   - Use for checking documentation (docs.python.org, etc.)
   - Check HTTP endpoints and service health

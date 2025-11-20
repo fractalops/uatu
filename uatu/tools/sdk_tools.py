@@ -20,19 +20,19 @@ _capabilities = ToolCapabilities.detect()
         "properties": {
             "min_cpu_percent": {
                 "type": "number",
-                "description": "Optional: Only return processes above this CPU percentage",
-                "default": 0.0,
+                "description": "Only return processes above this CPU percentage (default: 5.0)",
+                "default": 5.0,
             },
             "min_memory_mb": {
                 "type": "number",
-                "description": "Optional: Only return processes above this memory in MB",
-                "default": 0.0,
+                "description": "Only return processes above this memory in MB (default: 100.0)",
+                "default": 100.0,
             },
         },
         "required": [],
     },
 )
-async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> dict[str, Any]:
+async def list_processes(min_cpu_percent: float = 5.0, min_memory_mb: float = 100.0) -> dict[str, Any]:
     """List all running processes.
 
     Returns:
@@ -40,9 +40,9 @@ async def list_processes(min_cpu_percent: float = 0.0, min_memory_mb: float = 0.
     """
     # Handle potential empty dict or None values from MCP client
     if isinstance(min_cpu_percent, dict) or min_cpu_percent is None:
-        min_cpu_percent = 0.0
+        min_cpu_percent = 5.0
     if isinstance(min_memory_mb, dict) or min_memory_mb is None:
-        min_memory_mb = 0.0
+        min_memory_mb = 100.0
 
     # Import here to keep logic in existing files
     if platform.system() == "Darwin":

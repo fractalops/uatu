@@ -364,7 +364,7 @@ Uatu now implements per-domain approval for network access:
 - Remove domain: Manually edit JSON file (CLI command coming soon)
 - Clear all: Delete `~/.config/uatu/network_allowlist.json`
 
-#### SSRF Protection [Implemented]
+#### SSRF Protection
 
 **Automatic URL Validation** blocks dangerous URLs:
 
@@ -439,13 +439,6 @@ Even safe commands flagged if used suspiciously:
 5. **Header sanitization** - Only safe headers returned
 6. **Audit trail** - All network operations logged
 
-### Network Diagnostics (Future)
-
-**Planned**: Safe network diagnostic MCP tools:
-- `check_network_connectivity(host, count)` - Validated ping wrapper
-- `resolve_dns(domain, record_type)` - Validated DNS lookup
-- `check_http_endpoint(url)` - HEAD requests only, validated URLs
-- `trace_network_route(host, max_hops)` - Network path tracing
 
 **Security Properties**:
 1. **Structured parameters** - No command injection possible
@@ -583,27 +576,22 @@ uatu audit --last 50
    - Could miss subtle differences
    - Mitigation: Time-based cache expiry
 
-### Future Enhancements
+### MISC features
 
-1. **Network command blocklist** [Implemented]
+1. **Network command blocklist**
    - Blocks: `curl`, `wget`, `nc`, `ssh`, `scp`, `rsync`, `ftp`, `telnet`
    - Prevents data exfiltration in chat mode
    - Environment variable override: `UATU_ALLOW_NETWORK=true` (not recommended)
    - Location: `allowlist.py:BLOCKED_NETWORK_COMMANDS`, `permissions.py:89-102`
 
-2. **Composition attack detection** [Implemented]
+2. **Composition attack detection**
    - Pattern matching for suspicious pipelines
    - Flags: `| curl`, `| nc`, `grep password`, `grep secret`, `base64`, `xxd`, command substitution
    - Forces user approval even if base command is allowlisted
    - Location: `allowlist.py:SUSPICIOUS_PATTERNS`, `permissions.py:104-120`
 
-3. **Network diagnostic MCP tools**
-   - Structured tools: `check_network_connectivity(host)`, `resolve_dns(domain)`, etc.
-   - Input validation to prevent command injection
-   - HEAD-only HTTP requests for endpoint checks
-   - Safe alternative to bash network commands
 
-4. **Enhanced audit logging** [Implemented]
+3. **Enhanced audit logging**
    - Security event log: `~/.uatu/security.jsonl`
    - Logs command approvals/denials, network access, SSRF blocks
    - Logs allowlist modifications
@@ -611,20 +599,16 @@ uatu audit --last 50
    - CLI: `uatu audit` for viewing logs and statistics
    - Location: `audit.py`, `audit_cli.py`, `permissions.py` (integrated)
 
-5. **Trust verification**
+4. **Trust verification**
    - Environment fingerprinting (hostname + user + cwd hash)
    - Prompt on first run in new environment
    - Stored in `~/.config/uatu/trusted.json`
    - Prevent accidental execution in production
 
-6. **Credential detection and redaction**
+5. **Credential detection and redaction**
    - Pattern matching for API keys, passwords in output
    - Warn before logging potential secrets
    - Auto-redact in investigation logs
-
-**Low Priority**:
-7. **Rate limiting** - Max tool calls per minute to prevent resource exhaustion
-8. **Tool sandboxing** - Run MCP tools in separate process (low priority: tools already use safe libraries)
 
 ## Responsible Disclosure
 

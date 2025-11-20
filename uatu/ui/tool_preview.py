@@ -97,6 +97,10 @@ class ToolPreviewFormatter:
         if not output or not output.strip():
             return "✓ No output"
 
+        # Filter out SDK-internal permission messages - these are noisy and already handled by our permission handler
+        if "Hook requested permission" in output or "permission behavior:" in output.lower():
+            return None  # Don't show anything - our permission handler already printed the user-friendly message
+
         lines = output.strip().split("\n")
         line_count = len(lines)
 

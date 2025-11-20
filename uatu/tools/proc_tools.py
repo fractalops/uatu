@@ -74,16 +74,18 @@ class ListProcesses(Tool):
             "properties": {
                 "min_cpu_percent": {
                     "type": "number",
-                    "description": "Optional: Only return processes above this CPU %",
+                    "description": "Only return processes above this CPU % (default: 5.0)",
+                    "default": 5.0,
                 },
                 "min_memory_mb": {
                     "type": "number",
-                    "description": "Optional: Only return processes above this memory MB",
+                    "description": "Only return processes above this memory MB (default: 100.0)",
+                    "default": 100.0,
                 },
             },
         }
 
-    def execute(self, min_cpu_percent: float = 0.0, min_memory_mb: float = 0.0) -> list[dict[str, Any]]:
+    def execute(self, min_cpu_percent: float = 5.0, min_memory_mb: float = 100.0) -> list[dict[str, Any]]:
         """List all processes."""
         processes = []
 
