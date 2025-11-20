@@ -45,6 +45,7 @@ class ConsoleRenderer:
                 "/exit             - Exit the chat\n"
                 "/clear            - Clear conversation context (start fresh)\n"
                 "/allowlist        - Show allowlisted commands\n"
+                "/allowlist add <command> - Add a command to allowlist\n"
                 "/allowlist clear  - Clear all allowlist entries\n"
                 "/allowlist remove <pattern> - Remove a specific entry\n\n"
                 "[bold]Example questions:[/bold]\n"

@@ -50,6 +50,14 @@ class Settings(BaseSettings):
         default=True,
         description="If true, show one-line previews of tool results in the UI",
     )
+    uatu_show_stats: bool = Field(
+        default=True,
+        description="If true, show session statistics (tokens, cost) in corner display",
+    )
+    uatu_console_width: int | None = Field(
+        default=80,
+        description="Console width. 80=default, 0=full terminal, None=auto-detect, >0=specific width",
+    )
 
 
 def get_settings() -> Settings:

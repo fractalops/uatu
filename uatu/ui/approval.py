@@ -1,6 +1,7 @@
 """Approval prompt UI components."""
 
 import asyncio
+import sys
 import threading
 import time
 
@@ -76,6 +77,20 @@ class ApprovalPrompt:
         Returns:
             Tuple of (approved, add_to_allowlist)
         """
+        # Check if we have a TTY - if not, we can't show interactive prompt
+        if not sys.stdin.isatty():
+            self.console.print()
+            self.console.print("[yellow]⚠ Command requires approval but stdin is not a terminal[/yellow]")
+            self.console.print(f"[dim]{description}[/dim]")
+            self.console.print()
+            command_display = Syntax(command, "bash", theme="monokai", background_color="default")
+            self.console.print(command_display)
+            self.console.print()
+            self.console.print("[red]✗ Denied (no TTY for approval)[/red]")
+            self.console.print("[dim]Hint: Set UATU_REQUIRE_APPROVAL=false to use allowlist in stdin mode[/dim]")
+            self.console.print()
+            return (False, False)
+
         self.console.print()
         self.console.print("[yellow]⚠ Bash command approval required[/yellow]")
 
@@ -227,6 +242,19 @@ class ApprovalPrompt:
             Tuple of (approved, add_to_allowlist)
         """
         domain = NetworkAllowlistManager.extract_domain(url)
+
+        # Check if we have a TTY - if not, we can't show interactive prompt
+        if not sys.stdin.isatty():
+            self.console.print()
+            self.console.print("[yellow]⚠ Network access requires approval but stdin is not a terminal[/yellow]")
+            self.console.print(f"[dim]Tool:   {tool_name}[/dim]")
+            self.console.print(f"[dim]Domain: [yellow bold]{domain}[/yellow bold][/dim]")
+            self.console.print(f"[dim]URL:    {url}[/dim]")
+            self.console.print()
+            self.console.print("[red]✗ Denied (no TTY for approval)[/red]")
+            self.console.print("[dim]Hint: Add domain to network allowlist before running in stdin mode[/dim]")
+            self.console.print()
+            return (False, False)
 
         self.console.print()
         self.console.print("[yellow]⚠ Network access requested[/yellow]")

@@ -210,12 +210,13 @@ class GetSystemInfoMac(Tool):
                 text=True,
                 timeout=5,
             )
-            # Format: { 1.23 2.34 3.45 }
+            # Format: { 1.23 2.34 3.45 } or { 1,23 2,34 3,45 } depending on locale
             loads = result.stdout.strip().strip("{}").split()
+            # Handle both dot and comma decimal separators
             return {
-                "1min": float(loads[0]),
-                "5min": float(loads[1]),
-                "15min": float(loads[2]),
+                "1min": float(loads[0].replace(",", ".")),
+                "5min": float(loads[1].replace(",", ".")),
+                "15min": float(loads[2].replace(",", ".")),
             }
         except (subprocess.SubprocessError, ValueError, IndexError):
             return {"1min": 0.0, "5min": 0.0, "15min": 0.0}

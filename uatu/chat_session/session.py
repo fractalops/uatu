@@ -164,6 +164,8 @@ or ask you to investigate related issues."""
                             if result == "exit":
                                 return  # Exit completely
                             elif result == "clear":
+                                # Reset stats when clearing context
+                                self.components.message_handler.reset_stats()
                                 break  # Break inner loop to recreate client
                             # result == "continue" - keep going
                             continue

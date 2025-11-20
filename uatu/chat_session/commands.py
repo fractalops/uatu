@@ -127,7 +127,6 @@ class SlashCommandHandler:
         if risk_text in ["Credential Access", "Destructive"]:
             self.console.print(f"[red]✗ Cannot add to allowlist: {risk_text}[/red]")
             self.console.print(f"[red]  {warning}[/red]")
-            self.console.print("\n[yellow]High-risk commands must be approved interactively during use.[/yellow]")
             return
 
         # Warn about system modification but allow

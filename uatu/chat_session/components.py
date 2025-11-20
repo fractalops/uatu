@@ -1,5 +1,6 @@
 """Dependency container for chat session components."""
 
+import shutil
 from dataclasses import dataclass
 
 from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
@@ -43,7 +44,19 @@ class SessionComponents:
         """
         # Core dependencies
         settings = get_settings()
-        console = Console()
+
+        # Configure console width based on settings
+        console_width = settings.uatu_console_width
+        if console_width is None:
+            # Default: let Rich auto-detect and wrap intelligently
+            console = Console()
+        elif console_width == 0:
+            # Use full terminal width
+            terminal_size = shutil.get_terminal_size()
+            console = Console(width=terminal_size.columns)
+        else:
+            # Use specific width
+            console = Console(width=console_width)
 
         # UI components
         approval_prompt = ApprovalPrompt(console)

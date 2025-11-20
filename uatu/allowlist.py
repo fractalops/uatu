@@ -258,6 +258,11 @@ class AllowlistManager:
         if not command or not command.strip():
             return False
 
+        # Check if base command is in SAFE_BASE_COMMANDS
+        base_cmd = self.get_base_command(command)
+        if base_cmd in self.SAFE_BASE_COMMANDS:
+            return True
+
         # Check against stored allowlist
         for entry in self.allowlist.get("commands", []):
             pattern = entry.get("pattern", "")
