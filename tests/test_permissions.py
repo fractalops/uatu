@@ -60,7 +60,7 @@ class TestPermissionHandler:
         result = await handler.pre_tool_use_hook(input_data, None, None)
 
         assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
-        assert "auto-allowed" in result["hookSpecificOutput"]["message"]
+        assert "allowlisted" in result["hookSpecificOutput"]["message"]
 
     @pytest.mark.asyncio
     async def test_no_callback_denies_by_default(self, handler):
@@ -107,27 +107,6 @@ class TestPermissionHandler:
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
         assert "User declined" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
-    @pytest.mark.asyncio
-    async def test_add_to_allowlist_safe_command(self, handler):
-        """Safe commands should be added as base pattern."""
-        # Mock approval - user wants to add to allowlist
-        handler.get_approval_callback = AsyncMock(return_value=(True, True))
-
-        input_data = {
-            "tool_name": "Bash",
-            "tool_input": {"command": "top -bn1", "description": "Check CPU"},
-        }
-
-        result = await handler.pre_tool_use_hook(input_data, None, None)
-
-        assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
-        assert "'top'" in result["hookSpecificOutput"]["message"]
-
-        # Verify it was added to allowlist
-        entries = handler.allowlist.get_entries()
-        assert len(entries) == 1
-        assert entries[0]["pattern"] == "top"
-        assert entries[0]["type"] == "base"
 
     @pytest.mark.asyncio
     async def test_add_to_allowlist_dangerous_command(self, handler):

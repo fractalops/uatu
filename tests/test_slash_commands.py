@@ -138,13 +138,13 @@ class TestAllowlistRemove:
 
     def test_remove_existing_pattern(self, handler, console, temp_allowlist):
         """Test removing existing pattern."""
-        temp_allowlist.add_command("ps aux")
+        temp_allowlist.add_command("pwd")
 
-        handler.handle_command("/allowlist remove ps")
+        handler.handle_command("/allowlist remove pwd")
         output = console.file.getvalue()
 
-        assert "Removed" in output and "'ps'" in output and "allowlist" in output
-        assert not temp_allowlist.is_allowed("ps")
+        assert "Removed" in output and "'pwd'" in output and "allowlist" in output
+        assert not temp_allowlist.is_allowed("pwd")
 
     def test_remove_nonexistent_pattern(self, handler, console):
         """Test removing nonexistent pattern."""

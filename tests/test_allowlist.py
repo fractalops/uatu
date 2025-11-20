@@ -57,7 +57,7 @@ class TestIsAllowed:
 
     def test_not_in_allowlist(self, manager):
         """Commands not in allowlist should not be allowed."""
-        assert not manager.is_allowed("top -bn1")
+        assert not manager.is_allowed("dh -h")
 
     def test_base_command_exact_match(self, manager):
         """Base command should allow exact match."""
@@ -174,18 +174,18 @@ class TestRemoveCommand:
 
     def test_remove_actually_removes(self, manager):
         """Removed command should no longer be allowed."""
-        manager.add_command("top")
-        manager.remove_command("top")
-        assert not manager.is_allowed("top")
+        manager.add_command("ls")
+        manager.remove_command("ls")
+        assert not manager.is_allowed("ls")
 
     def test_remove_persists(self, temp_config_dir):
         """Removal should persist across instances."""
         manager1 = AllowlistManager(config_dir=temp_config_dir)
-        manager1.add_command("top")
-        manager1.remove_command("top")
+        manager1.add_command("pwd")
+        manager1.remove_command("pwd")
 
         manager2 = AllowlistManager(config_dir=temp_config_dir)
-        assert not manager2.is_allowed("top")
+        assert not manager2.is_allowed("pwd")
 
 
 class TestClear:
