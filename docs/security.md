@@ -167,10 +167,10 @@ Even safe commands flagged if used suspiciously:
 - Blocks bash commands (even with approval)
 - Safe for production monitoring
 
-`UATU_REQUIRE_APPROVAL=true`:
-- Forces interactive approval for all bash commands
-- Bypasses allowlist (user must approve every command)
-- Useful for auditing all commands
+`UATU_REQUIRE_APPROVAL`:
+- Auto-detects based on TTY: interactive mode prompts, stdin mode uses allowlist
+- Set `true` to force approval for all commands (bypasses allowlist)
+- Set `false` to always use allowlist (even in interactive mode)
 
 `UATU_ALLOW_NETWORK=false` (default):
 - Blocks curl, wget, nc, ssh, scp, rsync, ftp, telnet
@@ -207,21 +207,23 @@ uatu audit --last 50          # Show last N events
 
 ## Recommended Configurations
 
-**Development/Testing**:
+**Interactive (Development/Testing)**:
 ```bash
-uatu  # Interactive with approval prompts
-UATU_READ_ONLY=false uatu  # Enable bash with approval
+uatu  # Prompts for approval
+UATU_READ_ONLY=false uatu  # Enable bash with approval prompts
 ```
 
-**Production Monitoring**:
+**Stdin Mode (Bash enabled)**:
 ```bash
-UATU_READ_ONLY=true tail -f /var/log/app.log | uatu "monitor for errors"
+# Auto-uses allowlist (no prompts needed)
+UATU_READ_ONLY=false cat /var/log/service.log | uatu "check for issues"
+UATU_READ_ONLY=false ps aux | uatu "find resource hogs"
 ```
 
-**Automation/CI**:
+**Safe Mode (MCP only, default)**:
 ```bash
-UATU_REQUIRE_APPROVAL=false cat /var/log/service.log | uatu "check for issues"
-UATU_READ_ONLY=true ps aux | uatu "find resource hogs"
+# No bash commands, only MCP tools
+cat /var/log/app.log | uatu "monitor for errors"
 ```
 
 ## Best Practices

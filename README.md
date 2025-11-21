@@ -79,33 +79,29 @@ Ask questions naturally and get AI-powered system analysis:
 Pipe system data directly for instant troubleshooting:
 
 ```bash
-# Analyze application logs
-cat /var/log/app.log | uatu "find errors and suggest fixes"
+# Enable bash + auto-use allowlist for stdin mode
+UATU_READ_ONLY=false cat /var/log/app.log | uatu "find errors and suggest fixes"
 
 # Investigate crashed process (Linux)
-journalctl -u myservice --since "1 hour ago" | uatu "why did this crash?"
+UATU_READ_ONLY=false journalctl -u myservice --since "1 hour ago" | uatu "why did this crash?"
 
 # Debug high memory usage
-ps aux | head -20 | uatu "diagnose memory issues"
-
-# Network troubleshooting
-lsof -i -P -n | uatu "find port conflicts"
+UATU_READ_ONLY=false ps aux | head -20 | uatu "diagnose memory issues"
 ```
 
-**For automated monitoring/scripts:**
-
+**Safe mode (default)** - MCP tools only, no bash:
 ```bash
-# Read-only mode (safest for automation)
-UATU_READ_ONLY=true tail -100 /var/log/syslog | uatu "check for issues"
-
-# Trust allowlist (requires pre-approved commands)
-UATU_REQUIRE_APPROVAL=false dmesg | uatu "check hardware errors"
+# Analyze with MCP tools only (safest)
+cat /var/log/syslog | uatu "check for issues"
 ```
 
-**Workflow for scripts:**
-1. Run `uatu` interactively first
-2. Approve diagnostic commands with "Always allow"
-3. Use `UATU_REQUIRE_APPROVAL=false` in scripts to trust allowlist
+**With bash commands:**
+```bash
+# Auto-approves commands in SAFE_BASE_COMMANDS (df, ps, top, etc.)
+UATU_READ_ONLY=false dmesg | uatu "check hardware errors"
+```
+
+**Note:** In stdin mode, approval auto-detects - allowlisted commands are auto-approved without prompts.
 
 
 ## Configuration
