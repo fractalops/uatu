@@ -1,8 +1,13 @@
 """Markdown rendering with custom styles for Uatu."""
 
 from rich.console import Console, ConsoleOptions, RenderResult
+from rich.markdown import (
+    CodeBlock as RichCodeBlock,
+)
 from rich.markdown import Heading as RichHeading
 from rich.markdown import Markdown as RichMarkdown
+from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.text import Text
 
 
@@ -14,14 +19,11 @@ class LeftAlignedHeading(RichHeading):
         text.justify = "left"
 
         if self.tag == "h1":
-            # H1: Bold with underline
+            # H1: Bold, no underline (cleaner)
             yield Text("")
-            underline = Text("═" * len(text.plain), style="cyan")
             yield text
-            yield underline
-            yield Text("")
         elif self.tag == "h2":
-            # H2: With prefix and spacing
+            # H2: With prefix
             yield Text("")
             prefix = Text("▸ ", style="cyan bold")
             yield prefix + text
@@ -34,8 +36,32 @@ class LeftAlignedHeading(RichHeading):
             yield text
 
 
+class MinimalCodeBlock(RichCodeBlock):
+    """Code block with minimal panel borders."""
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        code = str(self.text)
+        syntax = Syntax(
+            code,
+            self.lexer_name,
+            theme=self.theme,
+            word_wrap=False,
+            background_color="default",
+            padding=0,
+        )
+        # Wrap in minimal panel
+        panel = Panel.fit(
+            syntax,
+            border_style="dim",
+            padding=(0, 1),
+        )
+        yield panel
+
+
 class LeftAlignedMarkdown(RichMarkdown):
-    """Markdown renderer with left-aligned headings."""
+    """Markdown renderer with left-aligned headings and minimal code blocks."""
 
     elements = RichMarkdown.elements.copy()
     elements["heading_open"] = LeftAlignedHeading
+    elements["fence"] = MinimalCodeBlock
+    elements["code_block"] = MinimalCodeBlock

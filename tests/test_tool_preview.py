@@ -13,11 +13,14 @@ class TestBashPreview:
         assert preview == "✓ Hello World"
 
     def test_multiline_output(self):
-        """Test multiline bash output shows count + first line."""
+        """Test multiline bash output shows all lines (up to 5)."""
         response = {"stdout": "USER     PID %CPU %MEM\nroot       1  0.0  0.1\nroot       2  0.0  0.0"}
         preview = ToolPreviewFormatter.format_preview("Bash", response)
-        assert preview.startswith("✓ 3 lines |")
+        # Now shows multiple lines instead of just first line
+        assert preview.startswith("✓ 3 lines:")
         assert "USER     PID %CPU %MEM" in preview
+        assert "root       1  0.0  0.1" in preview
+        assert "root       2  0.0  0.0" in preview
 
     def test_empty_output(self):
         """Test empty bash output."""
@@ -30,7 +33,7 @@ class TestBashPreview:
         long_line = "x" * 200
         response = {"stdout": long_line}
         preview = ToolPreviewFormatter.format_preview("Bash", response)
-        assert len(preview) <= 85  # MAX_PREVIEW_LENGTH + some chars for prefix
+        assert len(preview) <= 102  # MAX_PREVIEW_LENGTH + some chars for prefix
         assert preview.endswith("...")
 
 

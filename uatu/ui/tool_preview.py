@@ -8,10 +8,10 @@ from typing import Any
 
 
 class ToolPreviewFormatter:
-    """Formats tool results into minimal one-line previews."""
+    """Formats tool results into minimal previews."""
 
-    MAX_PREVIEW_LENGTH = 80
-    MAX_LINES_TO_SHOW = 3
+    MAX_PREVIEW_LENGTH = 100  # Increased to handle wider terminal output
+    MAX_LINES_TO_SHOW = 5  # Show up to 5 lines of output
 
     @classmethod
     def format_preview(cls, tool_name: str, tool_response: Any) -> str | None:
@@ -104,17 +104,35 @@ class ToolPreviewFormatter:
         lines = output.strip().split("\n")
         line_count = len(lines)
 
-        # Get first non-empty line
-        first_line = next((line.strip() for line in lines if line.strip()), "")
+        # Show up to MAX_LINES_TO_SHOW lines
+        preview_lines = []
+        for line in lines[:cls.MAX_LINES_TO_SHOW]:
+            line = line.strip()
+            if not line:
+                continue
+            # Truncate long lines
+            if len(line) > cls.MAX_PREVIEW_LENGTH:
+                line = line[: cls.MAX_PREVIEW_LENGTH - 3] + "..."
+            preview_lines.append(line)
 
-        # Truncate first line if too long
-        if len(first_line) > cls.MAX_PREVIEW_LENGTH:
-            first_line = first_line[: cls.MAX_PREVIEW_LENGTH - 3] + "..."
+        if not preview_lines:
+            return "✓ No output"
 
+        # Format the preview
         if line_count == 1:
-            return f"✓ {first_line}"
+            return f"✓ {preview_lines[0]}"
+        elif line_count <= cls.MAX_LINES_TO_SHOW:
+            # Show all lines
+            result = f"✓ {line_count} lines:\n"
+            for line in preview_lines:
+                result += f"    {line}\n"
+            return result.rstrip()
         else:
-            return f"✓ {line_count} lines | {first_line}"
+            # Show first few lines + indicator of more
+            result = f"✓ {line_count} lines (showing first {len(preview_lines)}):\n"
+            for line in preview_lines:
+                result += f"    {line}\n"
+            return result.rstrip()
 
     @classmethod
     def _format_mcp_preview(cls, tool_name: str, response: Any) -> str:

@@ -4,7 +4,6 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
 from uatu.audit import SecurityAuditor
 
@@ -76,13 +75,16 @@ def audit_command(
 
 def _show_summary(auditor: SecurityAuditor) -> None:
     """Display security summary statistics."""
+    from uatu.ui.console import ConsoleRenderer
+
     stats = auditor.get_security_summary()
 
     console.print("\n[bold cyan]Security Summary[/bold cyan]")
     console.print(f"[dim]Based on last {stats['total_events']} events[/dim]\n")
 
-    # Create summary table
-    table = Table(title="Security Event Statistics")
+    # Create minimal summary table
+    renderer = ConsoleRenderer(console)
+    table = renderer.create_minimal_table(title="Security Event Statistics")
     table.add_column("Category", style="cyan")
     table.add_column("Count", justify="right", style="yellow")
 

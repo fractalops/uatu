@@ -359,23 +359,24 @@ class TestRequireApprovalSetting:
     """Tests for UATU_REQUIRE_APPROVAL setting."""
 
     @pytest.mark.asyncio
-    async def test_require_approval_bypasses_allowlist(self, handler, monkeypatch):
-        """When UATU_REQUIRE_APPROVAL=true, allowlist should be bypassed."""
+    async def test_allowlist_respected_regardless_of_mode(self, handler, monkeypatch):
+        """Allowlist is now checked in both interactive and stdin modes."""
         monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "true")
 
         # Add command to allowlist
         handler.allowlist.add_command("ps")
 
-        # Mock approval callback to deny
+        # Mock approval callback (shouldn't be called since ps is allowlisted)
         handler.get_approval_callback = AsyncMock(return_value=(False, False))
 
         input_data = {"tool_name": "Bash", "tool_input": {"command": "ps aux"}}
 
         result = await handler.pre_tool_use_hook(input_data, None, None)
 
-        # Should require approval even though it's allowlisted
-        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
-        assert "User declined" in result["hookSpecificOutput"]["permissionDecisionReason"]
+        # Should auto-allow because it's allowlisted (behavior changed)
+        assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
+        # Approval callback should NOT have been called
+        handler.get_approval_callback.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_require_approval_false_uses_allowlist(self, handler, monkeypatch):

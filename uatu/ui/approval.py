@@ -12,6 +12,7 @@ from prompt_toolkit.layout import Layout
 from prompt_toolkit.widgets import Label
 from rich.console import Console
 from rich.live import Live
+from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -29,6 +30,7 @@ class ApprovalPrompt:
             console: Rich console for output. Creates new one if not provided.
         """
         self.console = console or Console()
+        self._approval_count = 0  # Track number of approvals in this session
 
     def _render_bash_approval_options(self, selected_index: int, command: str) -> Text:
         """Render bash approval options with current selection highlighted."""
@@ -91,30 +93,40 @@ class ApprovalPrompt:
             self.console.print()
             return (False, False)
 
+        # Increment approval counter
+        self._approval_count += 1
+
+        # Header with counter for context
         self.console.print()
-        self.console.print("[yellow]⚠ Bash command approval required[/yellow]")
+        header = f"[yellow bold]⚠ Bash Command Approval Required [dim](#{self._approval_count})[/dim][/yellow bold]"
+        self.console.print(header)
 
         # Show description if provided
         if description:
-            self.console.print(f"[dim]{description}[/dim]")
+            self.console.print(f"  [dim]{description}[/dim]")
 
         # Detect risk category and get warning
         risk_style, risk_text, warning = AllowlistManager.detect_risk_category(command)
 
-        # Show risk level
-        self.console.print(f"[dim]Risk: [{risk_style}]{risk_text}[/{risk_style}][/dim]")
+        # Show risk level in a more prominent box
+        risk_display = f"Risk Level: [{risk_style}]{risk_text}[/{risk_style}]"
+        self.console.print(f"  {risk_display}")
 
         # Show warning if this is a dangerous operation
         if warning:
-            self.console.print()
-            self.console.print(f"[{risk_style}]⚠ Warning:[/{risk_style}] {warning}")
-            self.console.print()
+            self.console.print(Panel.fit(
+                f"[{risk_style}]{warning}[/{risk_style}]",
+                title=f"[{risk_style}]⚠ Warning[/{risk_style}]",
+                border_style=risk_style,
+            ))
 
-        # Show syntax-highlighted command
-        self.console.print()
+        # Show syntax-highlighted command in a panel
         command_display = Syntax(command, "bash", theme="monokai", background_color="default")
-        self.console.print(command_display)
-        self.console.print()
+        self.console.print(Panel.fit(
+            command_display,
+            title="[cyan]Command to Execute[/cyan]",
+            border_style="cyan",
+        ))
 
         # Track selection state
         selected = [2]  # Start with "Deny" (index 2)
@@ -181,18 +193,17 @@ class ApprovalPrompt:
         add_to_allowlist = result == 1
 
         # Show clear confirmation with status indicator
-        self.console.print()
         if approved:
             if add_to_allowlist:
                 base_cmd = AllowlistManager.get_base_command(command)
                 if base_cmd in AllowlistManager.SAFE_BASE_COMMANDS:
-                    self.console.print(f"[green]✓ Allowed and added '{base_cmd}' to allowlist[/green]")
+                    self.console.print(f"[green bold]✓ Allowed and added '{base_cmd}' to allowlist[/green bold]")
                 else:
-                    self.console.print("[green]✓ Allowed and added exact command to allowlist[/green]")
+                    self.console.print("[green bold]✓ Allowed and added exact command to allowlist[/green bold]")
             else:
-                self.console.print("[green]✓ Allowed once[/green]")
+                self.console.print("[green bold]✓ Allowed once[/green bold]")
         else:
-            self.console.print("[red]✗ Denied[/red]")
+            self.console.print("[red bold]✗ Denied[/red bold]")
         self.console.print()
 
         return (approved, add_to_allowlist)
@@ -256,14 +267,24 @@ class ApprovalPrompt:
             self.console.print()
             return (False, False)
 
+        # Increment approval counter
+        self._approval_count += 1
+
+        # Header with counter for context
         self.console.print()
-        self.console.print("[yellow]⚠ Network access requested[/yellow]")
-        self.console.print(f"[dim]Tool:   {tool_name}[/dim]")
-        self.console.print(f"[dim]Domain: [yellow bold]{domain}[/yellow bold][/dim]")
-        self.console.print(f"[dim]URL:    {url}[/dim]")
-        self.console.print()
-        self.console.print("[yellow]This will fetch content from the internet[/yellow]")
-        self.console.print()
+        header = f"[yellow bold]⚠ Network Access Approval Required [dim](#{self._approval_count})[/dim][/yellow bold]"
+        self.console.print(header)
+
+        # Show details in a panel
+        details = f"[cyan]Tool:[/cyan]   {tool_name}\n"
+        details += f"[cyan]Domain:[/cyan] [yellow bold]{domain}[/yellow bold]\n"
+        details += f"[cyan]URL:[/cyan]    [dim]{url if len(url) < 70 else url[:67] + '...'}[/dim]"
+
+        self.console.print(Panel.fit(
+            details,
+            title="[cyan]Request Details[/cyan]",
+            border_style="cyan",
+        ))
 
         # Track selection state
         selected = [2]  # Start with "Deny"
@@ -327,14 +348,13 @@ class ApprovalPrompt:
         add_to_allowlist = result == 1
 
         # Show confirmation with status indicator
-        self.console.print()
         if approved:
             if add_to_allowlist:
-                self.console.print(f"[green]✓ Allowed and added '{domain}' to network allowlist[/green]")
+                self.console.print(f"[green bold]✓ Allowed and added '{domain}' to network allowlist[/green bold]")
             else:
-                self.console.print("[green]✓ Network access allowed once[/green]")
+                self.console.print("[green bold]✓ Network access allowed once[/green bold]")
         else:
-            self.console.print("[red]✗ Network access denied[/red]")
+            self.console.print("[red bold]✗ Network access denied[/red bold]")
         self.console.print()
 
         return (approved, add_to_allowlist)

@@ -79,7 +79,6 @@ class MessageHandler:
                                 # Print header when we start getting text
                                 if not response_text:
                                     self.console.print()
-                                    self.console.print("[dim]─────────────────────────────────────────[/dim]")
                                     self.console.print("[bold cyan]Uatu:[/bold cyan]")
                                     self.console.print()
 
@@ -132,23 +131,18 @@ class MessageHandler:
             # Display closing and stats (text was already streamed)
             if response_text:
                 self.console.print()
-                self.console.print()
-                self.console.print("[dim]─────────────────────────────────────────[/dim]")
 
                 # Show stats at bottom if enabled
                 if self.settings.uatu_show_stats and self.stats.conversation_turns > 0:
                     from rich.panel import Panel
                     from rich.text import Text
 
-                    stats_content = Text(self.stats.format_compact(), style="cyan")
+                    stats_content = Text(self.stats.format_compact(), style="dim cyan")
                     stats_panel = Panel.fit(
                         stats_content,
-                        border_style="dim cyan",
+                        border_style="dim",
                         padding=(0, 1),
-                        title="[dim]Session[/dim]",
-                        title_align="left",
                     )
-                    self.console.print()
                     self.console.print(stats_panel)
 
                 self.console.print()

@@ -215,10 +215,8 @@ class PermissionHandler:
                 # Force user approval - skip allowlist check
                 break
         else:
-            # No suspicious patterns found - check allowlist
-            # Use auto-detected approval setting (stdin mode = use allowlist)
-            require_approval = _should_require_approval()
-            if not require_approval and self.allowlist.is_allowed(command):
+            # No suspicious patterns found - check allowlist first
+            if self.allowlist.is_allowed(command):
                 logger.info(f"Command auto-allowed (allowlisted): {command!r}")
                 self.auditor.log_bash_auto_approved(
                     command=command,

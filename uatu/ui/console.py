@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
+from rich.table import Table
 
 from uatu.tools.constants import Tools
 from uatu.ui.tool_preview import ToolPreviewFormatter
@@ -153,8 +154,11 @@ class ConsoleRenderer:
         """
         preview = ToolPreviewFormatter.format_preview(tool_name, tool_response)
         if preview:
-            # Indent the preview slightly for hierarchy
-            self.console.print(f"[dim]  {preview}[/dim]")
+            # Use smaller, dimmer font for previews (helps with long table output)
+            # Split on newlines to apply dim style to each line
+            lines = preview.split('\n')
+            for line in lines:
+                self.console.print(f"[dim]  {line}[/dim]")
 
     def error(self, message: str) -> None:
         """Show error message."""
@@ -169,3 +173,40 @@ class ConsoleRenderer:
             border_style: Border color/style
         """
         self.console.print(Panel(content, title=title, border_style=border_style))
+
+    def create_minimal_table(
+        self,
+        title: str | None = None,
+        title_style: str = "bold cyan",
+        show_header: bool = True,
+    ) -> Table:
+        """Create a minimal table with no borders.
+
+        This creates a clean, scannable table without heavy borders,
+        perfect for displaying lists of data like processes, allowlists, etc.
+
+        Args:
+            title: Optional table title
+            title_style: Style for the title
+            show_header: Whether to show column headers
+
+        Returns:
+            A minimal Rich Table ready for adding columns and rows
+
+        Example:
+            table = renderer.create_minimal_table("Processes")
+            table.add_column("PID", style="cyan", no_wrap=True)
+            table.add_column("Memory", justify="right")
+            table.add_column("Command")
+            table.add_row("1234", "2.3GB", "python app.py")
+            console.print(table)
+        """
+        return Table(
+            title=title,
+            title_style=title_style,
+            show_header=show_header,
+            show_edge=False,  # No outer border
+            show_lines=False,  # No lines between rows
+            box=None,  # No box drawing characters
+            padding=(0, 1),  # Minimal padding: no vertical, 1 space horizontal
+        )

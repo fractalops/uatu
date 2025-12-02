@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Literal
 
 from rich.console import Console
-from rich.table import Table
 
 from uatu.permissions import PermissionHandler
 
@@ -81,13 +80,17 @@ class SlashCommandHandler:
 
     def _show_allowlist(self) -> None:
         """Display current allowlist."""
+        from uatu.ui.console import ConsoleRenderer
+
         entries = self.permission_handler.allowlist.get_entries()
 
         if not entries:
             self.console.print("[yellow]No commands in allowlist[/yellow]")
             return
 
-        table = Table(title="Allowlisted Commands", border_style="cyan")
+        # Use minimal table for cleaner look
+        renderer = ConsoleRenderer(self.console)
+        table = renderer.create_minimal_table(title="Allowlisted Commands")
         table.add_column("Pattern", style="green")
         table.add_column("Type", style="dim")
         table.add_column("Added", style="dim")
