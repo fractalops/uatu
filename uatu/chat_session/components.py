@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
 from rich.console import Console
 
+from uatu.agents import get_diagnostic_agents
 from uatu.chat_session.commands import SlashCommandHandler
 from uatu.chat_session.handlers import MessageHandler
 from uatu.config import Settings, get_settings
@@ -72,19 +73,25 @@ class SessionComponents:
         message_handler = MessageHandler(console)
 
         # Claude SDK options
-        sdk_options = ClaudeAgentOptions(
-            model=settings.uatu_model,
-            system_prompt=system_prompt,
-            mcp_servers={"system-tools": create_system_tools_mcp_server()},
-            max_turns=20,
-            allowed_tools=Tools.ALL_ALLOWED_TOOLS,
-            hooks={
+        sdk_options_dict = {
+            "model": settings.uatu_model,
+            "system_prompt": system_prompt,
+            "mcp_servers": {"system-tools": create_system_tools_mcp_server()},
+            "max_turns": 20,
+            "allowed_tools": Tools.ALL_ALLOWED_TOOLS,
+            "hooks": {
                 "PreToolUse": [HookMatcher(hooks=[permission_handler.pre_tool_use_hook])],
                 # PostToolUse hook removed - we capture all tool results via
                 # ToolResultBlock in the message stream instead (see handlers.py)
             },
-            stderr=lambda msg: console.print(f"[dim red]SDK: {msg}[/dim red]"),
-        )
+            "stderr": lambda msg: console.print(f"[dim red]SDK: {msg}[/dim red]"),
+        }
+
+        # Add specialized diagnostic subagents if enabled
+        if settings.uatu_enable_subagents:
+            sdk_options_dict["agents"] = get_diagnostic_agents()
+
+        sdk_options = ClaudeAgentOptions(**sdk_options_dict)
 
         return cls(
             settings=settings,

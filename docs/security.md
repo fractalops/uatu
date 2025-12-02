@@ -261,23 +261,3 @@ cat /var/log/app.log | uatu "monitor for errors"
 1. **No rate limiting on tool calls** - Agent could call tools in tight loop (mitigated by Claude's limits, max_turns setting)
 2. **Allowlist not encrypted** - Stored in plaintext JSON (mitigated by file permissions 600)
 3. **No sandboxing of MCP tools** - Tools run in same process (mitigated by using well-audited libraries)
-
-## Philosophy
-
-"Trust but verify" - Give agents capability with guardrails.
-
-AI agents should be:
-1. **Transparent**: User sees what's happening
-2. **Controllable**: User can approve/deny actions
-3. **Auditable**: Complete log of actions
-4. **Safe by default**: Read-only unless explicitly authorized
-
-The goal is empowerment, not automation. The human remains in the loop.
-
-## Responsible Disclosure
-
-If you discover a security vulnerability:
-1. Do not open a public issue
-2. Email: [Maintainer email from pyproject.toml]
-3. Include: Description, reproduction steps, impact assessment
-4. Allow time for patch before public disclosure

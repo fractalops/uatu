@@ -22,8 +22,12 @@ class ConsoleRenderer:
         """
         self.console = console or Console()
 
-    def show_welcome(self) -> None:
-        """Show welcome message for interactive chat."""
+    def show_welcome(self, subagents_enabled: bool = False) -> None:
+        """Show welcome message for interactive chat.
+
+        Args:
+            subagents_enabled: Whether specialized diagnostic agents are enabled
+        """
         self.console.print(
             Panel.fit(
                 "[bold blue]Uatu - The Watcher[/bold blue]\n[dim]Interactive System Troubleshooting Assistant[/dim]",
@@ -34,6 +38,13 @@ class ConsoleRenderer:
         self.console.print("[dim]Commands: /help, /exit, /allowlist[/dim]")
         self.console.print("[dim]Context is maintained across messages - follow-up questions work![/dim]")
         self.console.print("[dim]Tip: Use 'Always allow' to skip permission prompts for trusted commands[/dim]")
+
+        # Show subagent status if enabled
+        if subagents_enabled:
+            self.console.print(
+                "[dim cyan]Specialized agents: CPU/Memory, Network, I/O diagnostics[/dim cyan]"
+            )
+
         self.console.print()
 
     def show_help(self) -> None:

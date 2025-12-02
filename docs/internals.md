@@ -1,32 +1,6 @@
 # Uatu Internals
 
-This document explains the architecture, design principles, and implementation details of Uatu.
-
-## Design Principles
-
-### Start Simple, Add Complexity When Needed
-
-Uatu is built with a "simple first" approach. We don't build sophisticated systems for sophistication's sake—we build what's needed to solve the problem effectively. Each layer of complexity is justified by real requirements.
-
-### Composability and Modularity
-
-Components are designed to do one thing well and work together:
-- **MCP Tools** provide system introspection (CPU, memory, processes, network)
-- **Chat Session** manages conversation state and tool orchestration
-- **Permission System** provides security boundaries
-- **UI Layer** handles rendering and user interaction
-
-Each component can be tested, understood, and modified independently.
-
-### Transparency Over Magic
-
-Users see what's happening:
-- Tool calls are displayed as they execute
-- Bash commands show both description and actual command
-- Risk levels shown before approval (Credential Access, Destructive, etc.)
-- Security decisions logged for audit
-
-The agent's reasoning is part of the interface.
+This document explains the architecture and implementation details of Uatu.
 
 ## Architecture Overview
 
@@ -219,38 +193,9 @@ docs/                         # Documentation
 - Test tools and permissions independently
 
 **Fast feedback**:
-- `pytest` should runs in less than a minute
+- `pytest` runs in less than a minute
 - No external dependencies in unit tests
-
-## Known Limitations & Future Improvements
-
-### Stdin Mode TTY Detection
-
-**Current**: Works but may block on approval prompts in non-interactive contexts
-
-
-### Allowlist Workflow
-
-**Current**: Manual approval in interactive, then use UATU_REQUIRE_APPROVAL=false
-
-### Risk Detection
-
-**Current**: Pattern-based detection of dangerous operations
-
-### Observability
-
-**Current**: Audit logs, basic error messages
-
-**Future improvements**:
-- Structured logging (JSON format)
-- Cost tracking per session
-- Performance metrics (tool call latency)
-- Session replay for debugging
 
 ## Security
 
 See [docs/security.md](security.md) for detailed security model, threat analysis, and safe deployment practices.
-
----
-
-"The best code is code that's easy to delete when requirements change."

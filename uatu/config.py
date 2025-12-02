@@ -59,6 +59,12 @@ class Settings(BaseSettings):
         description="Console width. 80=default, 0=full terminal, None=auto-detect, >0=specific width",
     )
 
+    # Agent Configuration
+    uatu_enable_subagents: bool = Field(
+        default=True,
+        description="If true, enable specialized diagnostic subagents (cpu, memory, network, io)",
+    )
+
 
 def get_settings() -> Settings:
     """Get settings instance (lazy-loaded)."""

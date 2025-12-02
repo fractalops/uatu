@@ -231,8 +231,10 @@ or ask you to investigate related issues."""
 
     def run(self) -> None:
         """Run the interactive chat session."""
-        # Show welcome
-        self.components.renderer.show_welcome()
+        # Show welcome with subagent status
+        self.components.renderer.show_welcome(
+            subagents_enabled=self.components.settings.uatu_enable_subagents
+        )
 
         # Run async loop
         asyncio.run(self._run_async())
