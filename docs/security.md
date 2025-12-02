@@ -256,8 +256,3 @@ cat /var/log/app.log | uatu "monitor for errors"
 - Rotate API keys
 - Update Uatu for security patches
 
-## Known Limitations
-
-1. **No rate limiting on tool calls** - Agent could call tools in tight loop (mitigated by Claude's limits, max_turns setting)
-2. **Allowlist not encrypted** - Stored in plaintext JSON (mitigated by file permissions 600)
-3. **No sandboxing of MCP tools** - Tools run in same process (mitigated by using well-audited libraries)
