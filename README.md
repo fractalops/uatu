@@ -1,17 +1,16 @@
 # Uatu
 
-Your AI partner for system operations and troubleshooting.
+AI-powered system troubleshooting agent using Claude.
 
 <img src="uatu.gif" alt="autu-demo" width="2000"/>
 
+**What it does:**
+- Chat with your system to diagnose issues
+- Pipe logs directly for instant analysis
+- Approve commands before execution with granular controls
+- Connects symptoms across CPU, memory, network, and processes
 
-**Core capabilities:**
-- Interactive chat: Conversational troubleshooting with your system
-- Stdin mode: Pipe logs and data for instant AI analysis
-- Security-first: Granular command approval and allowlist system
-- Intelligent analysis: Connect CPU spikes, memory leaks, and process behavior
-
-**Tested on Platforms:**
+**Platforms:**
 - macOS
 - Linux
 
@@ -54,76 +53,70 @@ echo "ANTHROPIC_API_KEY=your_key" > .env
 
 ## Quick Start
 
-### Interactive Chat Mode (Default)
+### Interactive Chat
 
-Start a conversational troubleshooting session:
+Start a troubleshooting session:
 
 ```bash
-# Default mode
+# Read-only mode (default) - uses MCP tools, no bash
 uatu
 
 # Allow bash commands with approval prompts
 UATU_READ_ONLY=false uatu
 ```
 
-Ask questions naturally and get AI-powered system analysis:
+Example questions:
 - "What's causing high CPU usage?"
 - "Why is my server running slowly?"
 - "Investigate recent memory issues"
 - "What's listening on port 8080?"
 
-**Security**: Bash commands require user approval. Use `UATU_READ_ONLY=true` for read-only mode (MCP tools only).
+Commands require approval unless allowlisted.
 
-### Stdin Mode (One-Shot Analysis)
+### Stdin Mode
 
-Pipe system data directly for instant troubleshooting:
+Pipe data for analysis:
 
 ```bash
-# Enable bash + auto-use allowlist for stdin mode
-UATU_READ_ONLY=false cat /var/log/app.log | uatu "find errors and suggest fixes"
+# Read-only (default) - MCP tools only
+cat /var/log/app.log | uatu "find errors"
 
-# Investigate crashed process (Linux)
-UATU_READ_ONLY=false journalctl -u myservice --since "1 hour ago" | uatu "why did this crash?"
+# Enable bash commands (requires UATU_READ_ONLY=false)
+UATU_READ_ONLY=false journalctl -u myservice | uatu "why did this crash?"
 
-# Debug high memory usage
-UATU_READ_ONLY=false ps aux | head -20 | uatu "diagnose memory issues"
+# Safe bash commands (ps, df, top, etc.) auto-approve from allowlist
+UATU_READ_ONLY=false ps aux | uatu "diagnose memory issues"
 ```
 
-**Safe mode (default)** - MCP tools only, no bash:
-```bash
-# Analyze with MCP tools only (safest)
-cat /var/log/syslog | uatu "check for issues"
-```
-
-**With bash commands:**
-```bash
-# Auto-approves commands in SAFE_BASE_COMMANDS (df, ps, top, etc.)
-UATU_READ_ONLY=false dmesg | uatu "check hardware errors"
-```
-
-**Note:** In stdin mode, approval auto-detects - allowlisted commands are auto-approved without prompts.
+Allowlisted commands auto-approve in stdin mode. TTY required for interactive approval prompts.
 
 
 ## Configuration
 
-Create `.env` with options:
+Create `.env`:
 
 ```env
 # Required
 ANTHROPIC_API_KEY=your_key
 
+# Security (defaults shown)
+UATU_READ_ONLY=true                     # true: MCP tools only, false: allow bash
+UATU_REQUIRE_APPROVAL=true              # Require approval before bash execution
+UATU_ALLOW_NETWORK=false                # Allow network access (WebFetch, WebSearch)
+
 # Optional
-UATU_MODEL=claude-sonnet-4-5-20250929  # Claude model to use
-UATU_READ_ONLY=true                     # Agent can only read, not modify system
-UATU_REQUIRE_APPROVAL=true              # Require approval for risky actions
-UATU_ALLOW_NETWORK=false                # Block network commands (curl, wget, etc.)
+UATU_MODEL=claude-sonnet-4-5-20250929  # Claude model
+UATU_CONSOLE_WIDTH=80                   # Terminal width (80, 0=full, None=auto)
+UATU_ENABLE_SUBAGENTS=true              # Specialized diagnostic agents
+UATU_SHOW_TOOL_PREVIEWS=true            # Show tool result previews
+UATU_SHOW_STATS=true                    # Show session token/cost stats
 ```
 
-## Security Features
+## Security
 
-### Command Approval System
+### Command Approval
 
-All bash commands require approval unless allowlisted:
+Bash commands require approval unless allowlisted:
 
 ```bash
 ⚠ Bash command approval required
@@ -138,9 +131,9 @@ ls -la ~/.ssh/
   → Deny
 ```
 
-### Audit Logging
+### Audit Log
 
-All security decisions are logged:
+Security decisions are logged to `~/.config/uatu/audit.jsonl`:
 
 ```bash
 # View audit log (last 100 events)
@@ -156,19 +149,19 @@ uatu audit --type bash_command_approval
 uatu audit --summary
 ```
 
-### Allowlist Management
+### Allowlist
 
-View and manage approved commands:
+Manage approved commands in `~/.config/uatu/allowlist.json`:
 
 ```bash
-# View allowlist
+# View directly
 cat ~/.config/uatu/allowlist.json
 
-# Interactive chat commands (with tab completion)
-/allowlist                              # Show approved commands
-/allowlist add <command>                # Add command to allowlist
-/allowlist remove <pattern>             # Remove pattern from allowlist
-/allowlist clear                        # Clear all entries
+# In interactive chat (with tab completion)
+/allowlist                    # Show approved commands
+/allowlist add <command>      # Add to allowlist
+/allowlist remove <pattern>   # Remove from allowlist
+/allowlist clear              # Clear all
 ```
 
 ## Development
@@ -188,7 +181,8 @@ uv run ruff format .
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
-- [Claude Agent SDK for Python](https://github.com/anthropics/claude-agent-sdk-python) for building the agent.
-- [Typer](https://github.com/fastapi/typer) for the terminal UI
-- [Rich](https://github.com/Textualize/rich) for formatting text in the terminal.
+## Built With
+- [Claude Agent SDK for Python](https://github.com/anthropics/claude-agent-sdk-python)
+- [Rich](https://github.com/Textualize/rich) - Terminal formatting
+- [Typer](https://github.com/fastapi/typer) - CLI framework
+- [prompt_toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) - Interactive input
