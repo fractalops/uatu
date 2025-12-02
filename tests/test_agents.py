@@ -1,6 +1,5 @@
 """Tests for specialized diagnostic agents."""
 
-import pytest
 
 from uatu.agents import get_diagnostic_agents
 from uatu.tools.constants import Tools
