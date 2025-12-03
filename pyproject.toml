@@ -1,6 +1,6 @@
 [project]
 name = "uatu"
-version = "0.1.11"
+version = "0.1.12"
 description = "The Watcher - An agentic system troubleshooting tool powered by Claude"
 readme = "README.md"
 requires-python = ">=3.10"
