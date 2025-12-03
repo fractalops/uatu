@@ -2,7 +2,7 @@
 
 AI-powered system troubleshooting agent using Claude.
 
-<img src="uatu.gif" alt="autu-demo" width="2000"/>
+<img src="uatu_.gif" alt="autu-demo" width="2000"/>
 
 **What it does:**
 - Chat with your system to diagnose issues
