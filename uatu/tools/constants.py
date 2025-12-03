@@ -19,6 +19,8 @@ class Tools:
 
     # SDK Built-in Tools
     BASH: Final[str] = "Bash"
+    BASH_OUTPUT: Final[str] = "BashOutput"
+    KILL_SHELL: Final[str] = "KillShell"
     WEB_FETCH: Final[str] = "WebFetch"
     WEB_SEARCH: Final[str] = "WebSearch"
 
@@ -40,6 +42,11 @@ class Tools:
     BASH_TOOLS: Final[frozenset[str]] = frozenset([
         BASH,
         "mcp__bash",  # Potential variant
+    ])
+
+    READ_ONLY_TOOLS: Final[frozenset[str]] = frozenset([
+        BASH_OUTPUT,  # Read output from background bash shells
+        KILL_SHELL,   # Kill a background shell (doesn't execute new commands)
     ])
 
     ALL_ALLOWED_TOOLS: Final[list[str]] = [
@@ -80,12 +87,19 @@ class Tools:
 
     @classmethod
     def is_bash_tool(cls, tool_name: str) -> bool:
-        """Check if a tool is a bash tool.
+        """Check if a tool is a bash tool that requires approval.
 
         Args:
             tool_name: Name of the tool
 
         Returns:
-            True if the tool is a bash tool
+            True if the tool is a bash tool that requires approval
+
+        Note:
+            BashOutput and KillShell are NOT considered bash tools for approval
+            purposes since they don't execute new commands.
         """
+        # Explicitly exclude read-only tools
+        if tool_name in cls.READ_ONLY_TOOLS:
+            return False
         return tool_name in cls.BASH_TOOLS or "bash" in tool_name.lower()

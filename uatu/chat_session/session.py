@@ -68,6 +68,8 @@ When using Bash, filter and aggregate data BEFORE returning results. Examples:
   * BETTER: `du -sh /var/* 2>/dev/null | sort -rh | head -5` (specific directory only)
   * BEST: `du -sh --max-depth=1 /var 2>/dev/null | sort -rh` (limit depth)
   * For large dirs, use: `du -sh /var/log/* 2>/dev/null | sort -rh | head -10` (target known problem areas)
+  * **IMPORTANT**: For any `du` command that scans large directories, ALWAYS use run_in_background=true
+    and then check results with BashOutput. This prevents blocking the user while scanning.
 - Quick wins for disk space:
   * macOS logs: `log show --predicate 'eventMessage contains "log"' --info --last 1h | wc -l`
   * Find large files: `find /var/log -type f -size +100M 2>/dev/null`
@@ -125,6 +127,12 @@ When analyzing issues:
   * Always use `--max-depth=1` or target specific directories
   * Use `df -h` first to identify which filesystem is full
   * Use `find` with `-size` filters instead of recursive `du`
+- **CRITICAL - Use background execution for slow operations:**
+  * ANY command that might take >5 seconds should use run_in_background=true
+  * This includes: `du` on large directories, `find` across filesystems, large log analysis
+  * After launching background command, use BashOutput to check progress periodically
+  * Inform the user the command is running in background while you continue investigation
+  * Example pattern: Launch `du` in background → check quick wins → poll BashOutput for results
 - Explain your reasoning clearly
 - Cite specific evidence (PIDs, process names, resource usage, error codes)
 
@@ -152,7 +160,6 @@ or request observation of related phenomena."""
             components: Session components container. If None, creates default components.
         """
         self.components = components or SessionComponents.create_default(self.SYSTEM_PROMPT)
-        self._approval_lock = asyncio.Lock()
 
     async def _run_async(self) -> None:
         """Run async chat loop."""

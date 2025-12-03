@@ -1,5 +1,6 @@
 """Permission handling for Uatu using SDK hooks."""
 
+import asyncio
 import logging
 import os
 import re
@@ -116,6 +117,8 @@ class PermissionHandler:
         # Callbacks for getting user approval - injected from UI layer
         self.get_approval_callback: ApprovalCallback | None = None
         self.get_network_approval_callback: NetworkApprovalCallback | None = None
+        # Lock to serialize approval prompts (only one at a time)
+        self._approval_lock = asyncio.Lock()
 
     async def pre_tool_use_hook(
         self,
@@ -248,8 +251,10 @@ class PermissionHandler:
             }
 
         # Get approval from user (via UI layer)
+        # Use lock to serialize approval prompts (only one at a time)
         logger.debug(f"Requesting user approval for: {command!r}")
-        approved, add_to_allowlist = await self.get_approval_callback(description, command)
+        async with self._approval_lock:
+            approved, add_to_allowlist = await self.get_approval_callback(description, command)
 
         # Log approval decision
         self.auditor.log_bash_approval(
@@ -379,9 +384,11 @@ class PermissionHandler:
             }
 
         # Get approval from user (via UI layer)
+        # Use lock to serialize approval prompts (only one at a time)
         domain = NetworkAllowlistManager.extract_domain(url)
         logger.debug(f"Requesting user approval for network access: {url!r}")
-        approved, add_to_allowlist = await self.get_network_approval_callback(tool_name, url)
+        async with self._approval_lock:
+            approved, add_to_allowlist = await self.get_network_approval_callback(tool_name, url)
 
         # Log approval decision
         self.auditor.log_network_approval(

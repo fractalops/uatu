@@ -232,7 +232,11 @@ I/O-related issues.
 **Token-Efficient Commands:**
 When using Bash for I/O diagnostics:
 - I/O wait check: `iostat -x 1 1 | tail -n +4 | awk '{print $1, $4, $14}'`
-- Disk usage: `df -h` or `du -sh /* 2>/dev/null | sort -rh | head -5`
+- Disk usage: `df -h` (fast overview) or `du -sh /var/* 2>/dev/null | sort -rh | head -5` (specific dir)
+- **IMPORTANT**: For `du` commands on large directories, ALWAYS use run_in_background=true
+  * Example: Launch `du -sh /Users/* 2>/dev/null | sort -rh | head -10` in background
+  * Then check results with BashOutput while investigating other areas
+  * Never block the user waiting for slow filesystem scans
 - File descriptor count: `lsof -p PID | wc -l`
 - Open files by process: `lsof -p PID | head -20`
 - Processes in D state: `ps aux | awk '$8=="D" {print $2, $11}'`
