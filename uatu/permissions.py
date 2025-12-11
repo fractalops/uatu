@@ -3,14 +3,13 @@
 import asyncio
 import logging
 import os
+import platform
 import re
+import shutil
 import sys
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
-
-import platform
-import shutil
 
 from claude_agent_sdk import HookContext
 from rich.console import Console
@@ -176,7 +175,9 @@ class PermissionHandler:
                 "hookSpecificOutput": {
                     "hookEventName": HOOK_EVENT_NAME,
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": "strace is not available on macOS; use sample/lsof or dtruss (sudo) instead.",
+                    "permissionDecisionReason": (
+                        "strace is not available on macOS; use sample/lsof or dtruss (sudo) instead."
+                    ),
                 }
             }
         if "strace" in lower_cmd:
@@ -185,7 +186,9 @@ class PermissionHandler:
                     "hookSpecificOutput": {
                         "hookEventName": HOOK_EVENT_NAME,
                         "permissionDecision": "deny",
-                        "permissionDecisionReason": "strace is not installed; install it or use alternative tools (lsof/sample).",
+                        "permissionDecisionReason": (
+                            "strace is not installed; install it or use alternative tools (lsof/sample)."
+                        ),
                     }
                 }
 

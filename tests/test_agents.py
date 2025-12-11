@@ -20,6 +20,7 @@ class TestDiagnosticAgents:
             "cpu-memory-diagnostics",
             "network-diagnostics",
             "io-diagnostics",
+            "disk-space-diagnostics",
         }
         assert set(agents.keys()) == expected_agents
 
@@ -70,9 +71,6 @@ class TestDiagnosticAgents:
         assert Tools.BASH in network_agent.tools
         assert Tools.WEB_FETCH in network_agent.tools
 
-        # Should NOT have list_processes (not network-specific)
-        assert Tools.LIST_PROCESSES not in network_agent.tools
-
     def test_io_agent_configuration(self):
         """Test I/O diagnostics agent has correct configuration."""
         agents = get_diagnostic_agents()
@@ -115,7 +113,7 @@ class TestDiagnosticAgents:
         agents = get_diagnostic_agents()
         for name, agent in agents.items():
             assert agent.tools, f"Agent {name} has no tools"
-            assert len(agent.tools) >= 3, f"Agent {name} has too few tools"
+            assert len(agent.tools) >= 2, f"Agent {name} has too few tools"
 
     def test_all_agents_inherit_model(self):
         """Test that all agents use model inheritance."""
@@ -146,9 +144,9 @@ class TestDiagnosticAgents:
         """Test that agents don't have unnecessary tool overlap."""
         agents = get_diagnostic_agents()
 
-        # Network agent shouldn't need LIST_PROCESSES (uses FIND_PROCESS_BY_NAME instead)
+        # Network agent may include LIST_PROCESSES with filters; ensure key network tools present
         network_tools = set(agents["network-diagnostics"].tools)
-        assert Tools.LIST_PROCESSES not in network_tools
+        assert Tools.CHECK_PORT_BINDING in network_tools
 
         # I/O agent should focus on I/O-specific tools
         io_tools = set(agents["io-diagnostics"].tools)

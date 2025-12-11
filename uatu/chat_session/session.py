@@ -4,7 +4,6 @@ import asyncio
 
 from claude_agent_sdk import ClaudeSDKClient
 from prompt_toolkit import PromptSession
-from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.styles import Style as PromptStyle
@@ -35,8 +34,10 @@ Your sacred duty is to:
 4. GUIDE with actionable knowledge, though you do not act directly
 
 Available Tools:
-- **MCP tools (preferred for safety)**: get_system_info, list_processes, get_process_tree, find_process_by_name, check_port_binding, read_proc_file
-- **Safe-hints MCP tools**: top_processes, disk_usage_summary, listening_ports_hint (use these instead of inventing Bash when possible)
+- **MCP tools (preferred for safety)**: get_system_info, list_processes, get_process_tree,
+  find_process_by_name, check_port_binding, read_proc_file
+- **Safe-hints MCP tools**: top_processes, disk_usage_summary, listening_ports_hint
+  (use these instead of inventing Bash when possible)
 - **Bash (use sparingly)**: only when MCP/safe-hints cannot answer the question
   - IMPORTANT: When using list_processes, ALWAYS use aggressive filters to avoid token overflow:
     * For high-memory processes: min_memory_mb=100 or higher (NOT 0)
@@ -63,7 +64,8 @@ Tool Selection & Safety Heuristics:
 - Prefer MCP and safe-hints tools first, especially in read-only mode or after approvals are denied.
 - Avoid Bash for simple CPU/memory/port/disk summaries; use MCP equivalents or safe-hints guidance.
 - If a tool fails, do NOT retry the same failing command; switch to MCP, add filters, or choose a safer variant.
-- If the scenario is outside known patterns/OS behaviors, ask 1-2 clarifying questions before heavy commands; stick to lightweight MCP probes first.
+- If the scenario is outside known patterns/OS behaviors, ask 1-2 clarifying questions before heavy commands;
+  stick to lightweight MCP probes first.
 - When reading logs with Bash, always bound scope (tail/head/last N minutes) and avoid verbose flags unless necessary.
 - Use vetted Bash templates when Bash is necessary:
   * Processes: ps aux | sort -k3 -rn | head -n 5
@@ -244,15 +246,20 @@ or request observation of related phenomena."""
                         stats = self.components.message_handler.stats
                         remaining_turns = self.components.settings.uatu_max_turns - stats.conversation_turns
                         if remaining_turns <= 3:
-                            self.components.console.print(f"[yellow]Warning: {remaining_turns} turns remaining (max {self.components.settings.uatu_max_turns}).[/yellow]")
+                            max_turns = self.components.settings.uatu_max_turns
+                            self.components.console.print(
+                                f"[yellow]Warning: {remaining_turns} turns remaining (max {max_turns}).[/yellow]"
+                            )
                         if (
                             self.components.settings.uatu_max_budget_usd is not None
                             and stats.total_cost_usd is not None
                         ):
                             remaining_budget = self.components.settings.uatu_max_budget_usd - stats.total_cost_usd
                             if remaining_budget <= max(0.5, 0.1 * self.components.settings.uatu_max_budget_usd):
+                                max_budget = self.components.settings.uatu_max_budget_usd
                                 self.components.console.print(
-                                    f"[yellow]Warning: budget remaining ${remaining_budget:.4f} (max ${self.components.settings.uatu_max_budget_usd:.4f}).[/yellow]"
+                                    "[yellow]Warning: budget remaining "
+                                    f"${remaining_budget:.4f} (max ${max_budget:.4f}).[/yellow]"
                                 )
 
                         # Handle slash commands

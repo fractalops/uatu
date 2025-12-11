@@ -83,7 +83,7 @@ class MessageHandler:
                     pass
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     def reset_stats(self) -> None:
@@ -210,7 +210,8 @@ class MessageHandler:
                                 self.renderer.show_tool_result(tool_name, tool_response)
                                 if elapsed_msg:
                                     pretty_name = self.renderer.clean_tool_name(tool_name)
-                                    self.renderer.status(f"{pretty_name} finished{elapsed_msg}", status="info", dim=True)
+                                    msg = f"{pretty_name} finished{elapsed_msg}"
+                                    self.renderer.status(msg, status="info", dim=True)
 
                 # Restart spinner after tools (waiting for next response)
                 if message_has_tools and not message_has_text:

@@ -358,7 +358,9 @@ def _create_disk_space_agent() -> AgentDefinition:
 
 **Tool Usage Strategy:**
 - Start with df -h (via Bash) to find full filesystems.
-- If deeper analysis is needed, use du with depth limits and sorting; always bound scope (e.g., /var/log, /tmp) and prefer background for anything > a few seconds.
+- If deeper analysis is needed, use du with depth limits and sorting; always
+  bound scope (e.g., /var/log, /tmp) and prefer background for anything > a few
+  seconds.
 - Never run recursive du on / or large roots; keep to --max-depth=1 and top-N head.
 
 **Token-Efficient Commands (Bash):**
@@ -384,6 +386,7 @@ def _create_disk_space_agent() -> AgentDefinition:
 - `du -sh /Users/* 2>/dev/null | sort -rh | head -10`""",
         tools=[
             Tools.GET_SYSTEM_INFO,
+            Tools.LIST_PROCESSES,
             Tools.BASH,
         ],
         model="inherit",

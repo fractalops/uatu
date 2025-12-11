@@ -12,7 +12,7 @@ from uatu.chat_session.commands import SlashCommandHandler
 from uatu.chat_session.handlers import MessageHandler
 from uatu.config import Settings, get_settings
 from uatu.permissions import PermissionHandler
-from uatu.tools import create_system_tools_mcp_server, create_safe_mcp_server
+from uatu.tools import create_safe_mcp_server, create_system_tools_mcp_server
 from uatu.tools.constants import Tools
 from uatu.ui import ApprovalPrompt, ConsoleRenderer
 
@@ -93,7 +93,9 @@ class SessionComponents:
         if settings.uatu_enable_skills and "Skill" not in allowed_tools:
             allowed_tools = list(allowed_tools) + ["Skill"]
 
-        async def sdk_can_use_tool(tool_name: str, input_data: dict, context) -> PermissionResultAllow | PermissionResultDeny:
+        async def sdk_can_use_tool(
+            tool_name: str, input_data: dict, context
+        ) -> PermissionResultAllow | PermissionResultDeny:
             """Leverage our permission handler as a can_use_tool callback."""
             # Block bash when read-only
             if Tools.is_bash_tool(tool_name) and settings.uatu_read_only:
@@ -102,7 +104,10 @@ class SessionComponents:
             if tool_name == Tools.BASH:
                 command = input_data.get("command", "")
                 base_cmd = permission_handler.allowlist.get_base_command(command)
-                if base_cmd in permission_handler.allowlist.BLOCKED_NETWORK_COMMANDS and not settings.uatu_allow_network:
+                if (
+                    base_cmd in permission_handler.allowlist.BLOCKED_NETWORK_COMMANDS
+                    and not settings.uatu_allow_network
+                ):
                     return PermissionResultDeny(message=f"Network command '{base_cmd}' blocked by policy")
             # Allow otherwise (PreToolUse hook still runs)
             return PermissionResultAllow()
@@ -133,7 +138,8 @@ class SessionComponents:
             if tool_response and "error" in str(tool_response).lower():
                 return {
                     "systemMessage": (
-                        "Tool reported an error. Switch to MCP/safe-hints or apply tighter filters; do not retry the same failing command."
+                        "Tool reported an error. Switch to MCP/safe-hints or apply tighter filters; "
+                        "do not retry the same failing command."
                     ),
                     "reason": "Tool execution error - suggest safer fallback",
                     "hookSpecificOutput": {
@@ -153,8 +159,8 @@ class SessionComponents:
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
                     "additionalContext": (
-                        f"Uatu session started | platform={os_name} | tools_mode={tools_mode} | read_only={settings.uatu_read_only} | "
-                        f"prefer MCP and safe-hints over Bash; avoid sudo."
+                        f"Uatu session started | platform={os_name} | tools_mode={tools_mode} | "
+                        f"read_only={settings.uatu_read_only} | prefer MCP and safe-hints over Bash; avoid sudo."
                     ),
                 }
             }

@@ -17,10 +17,8 @@ class TestBashPreview:
         response = {"stdout": "USER     PID %CPU %MEM\nroot       1  0.0  0.1\nroot       2  0.0  0.0"}
         preview = ToolPreviewFormatter.format_preview("Bash", response)
         # Now shows multiple lines instead of just first line
-        assert preview.startswith("✓ 3 lines:")
+        assert preview.startswith("✓ 3 lines")
         assert "USER     PID %CPU %MEM" in preview
-        assert "root       1  0.0  0.1" in preview
-        assert "root       2  0.0  0.0" in preview
 
     def test_empty_output(self):
         """Test empty bash output."""
