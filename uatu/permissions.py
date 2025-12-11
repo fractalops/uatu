@@ -9,6 +9,9 @@ from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
 
+import platform
+import shutil
+
 from claude_agent_sdk import HookContext
 from rich.console import Console
 
@@ -165,6 +168,35 @@ class PermissionHandler:
 
         # Get settings once for all checks
         settings = get_settings()
+
+        # Platform-specific guardrails (e.g., strace/ss on macOS)
+        lower_cmd = command.lower()
+        if "strace" in lower_cmd and platform.system() == "Darwin":
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": HOOK_EVENT_NAME,
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "strace is not available on macOS; use sample/lsof or dtruss (sudo) instead.",
+                }
+            }
+        if "strace" in lower_cmd:
+            if not shutil.which("strace"):
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": HOOK_EVENT_NAME,
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": "strace is not installed; install it or use alternative tools (lsof/sample).",
+                    }
+                }
+
+        if platform.system() == "Darwin" and (" ss " in f" {lower_cmd} " or lower_cmd.strip().startswith("ss ")):
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": HOOK_EVENT_NAME,
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "ss is not available on macOS; use lsof -i -P -n or netstat instead.",
+                }
+            }
 
         # Check UATU_READ_ONLY setting - deny all bash commands if set
         if settings.uatu_read_only:

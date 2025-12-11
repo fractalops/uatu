@@ -19,6 +19,7 @@ def get_diagnostic_agents() -> dict[str, AgentDefinition]:
         "cpu-memory-diagnostics": _create_cpu_memory_agent(),
         "network-diagnostics": _create_network_agent(),
         "io-diagnostics": _create_io_agent(),
+        "disk-space-diagnostics": _create_disk_space_agent(),
     }
 
 
@@ -47,9 +48,10 @@ Memory Analysis:
 5. Find memory fragmentation issues
 
 **Tool Usage Strategy:**
-- Use list_processes with min_cpu_percent=5.0 to filter CPU-intensive processes
+- Use list_processes with min_cpu_percent>=5.0 and/or min_memory_mb>=100 to filter noise (never call unfiltered)
 - Use get_system_info to establish baseline (CPU count, load averages)
 - Use get_process_tree to identify parent-child relationships
+- Use find_process_by_name to locate suspect processes quickly
 - Use Bash for detailed analysis (ps, top, iostat)
 - Use read_proc_file to access /proc/[pid]/stat for CPU statistics
 
@@ -118,11 +120,28 @@ Memory severity:
 - High memory isn't always a leak (could be caching)
 - Focus on patterns: sustained vs transient, proportional to workload
 - Correlate metrics: high CPU + low memory = CPU-bound, high memory + normal CPU = potential leak
-- Check if swap is being used (performance impact)""",
+- Check if swap is being used (performance impact)
+
+**Output Format (concise):**
+1) Conclusion first (one line)
+2) Evidence (top processes with filters applied)
+3) Next actions (short list)
+
+**Safety/Efficiency:**
+- Prefer MCP tools before Bash; keep Bash filtered and short.
+- Avoid unfiltered ps/du; no long-running commands without clear limits.
+- Background anything that might take >5s; surface results succinctly.
+
+**Template commands (Bash, filtered):**
+- `ps aux | sort -k3 -rn | head -5`
+- `ps aux | sort -k4 -rn | head -5`
+- `ps -M -p PID | wc -l` (macOS) or `ps -T -p PID | wc -l` (Linux)""",
         tools=[
             Tools.LIST_PROCESSES,
             Tools.GET_SYSTEM_INFO,
             Tools.GET_PROCESS_TREE,
+            Tools.FIND_PROCESS_BY_NAME,
+            Tools.READ_PROC_FILE,
             Tools.BASH,
         ],
         model="inherit",
@@ -145,6 +164,7 @@ network-related issues.
 
 **Tool Usage Strategy:**
 - Use check_port_binding to identify what's listening on specific ports
+- Use list_processes with filters (min_cpu_percent>=5 or min_memory_mb>=100) to spot suspects; never unfiltered
 - Use find_process_by_name to locate network-related processes
 - Use get_process_tree to find related network processes
 - Use Bash for detailed analysis (ss, netstat, lsof, nc)
@@ -187,6 +207,22 @@ When using Bash for network diagnostics:
 - Provide actionable recommendations (restart service, fix leak, change port)
 - Cite specific evidence from tool outputs
 
+**Output Format (concise):**
+1) Conclusion first (one line)
+2) Evidence (port/process/state)
+3) Next actions (short list)
+
+**Safety/Efficiency:**
+- Prefer MCP tools; only use Bash when MCP cannot answer.
+- Keep Bash commands filtered/short; avoid unbounded scans.
+- Background long-running netstat/lsof if needed; prefer ss with filters.
+
+**Template commands (Bash, filtered):**
+- `ss -s`
+- `ss -tlnp | head -20`
+- `lsof -i -P -n | grep LISTEN | head -20`
+- `ss -tan | awk '{print $1}' | sort | uniq -c | sort -rn | head -10`
+
 **Security Notes:**
 - Respect UATU_ALLOW_NETWORK setting (may block WebFetch/curl/wget)
 - If network commands are denied, explain you can only check local state
@@ -198,6 +234,7 @@ Remember: Not all network issues are leaks. Focus on:
 - Is it a transient issue or sustained problem?
 - Are system limits being hit (check ulimit -n)?""",
         tools=[
+            Tools.LIST_PROCESSES,
             Tools.CHECK_PORT_BINDING,
             Tools.FIND_PROCESS_BY_NAME,
             Tools.GET_PROCESS_TREE,
@@ -271,6 +308,21 @@ When using Bash for I/O diagnostics:
 - Provide actionable recommendations (free disk space, fix leak, investigate slow disk)
 - Cite specific evidence from tool outputs
 
+**Output Format (concise):**
+1) Conclusion first (one line)
+2) Evidence (process/state/iowait/FD counts)
+3) Next actions (short list)
+
+**Safety/Efficiency:**
+- Prefer MCP tools first; keep Bash filtered.
+- Any du/large scans must be bounded or backgrounded; avoid unfiltered searches.
+
+**Template commands (Bash, filtered/bounded):**
+- `iostat -x 1 1 | tail -n +4 | awk '{print $1, $4, $14}'`
+- `df -h`
+- `du -sh /var/* 2>/dev/null | sort -rh | head -10`
+- `lsof -p PID | head -20`
+
 **Important Distinctions:**
 - **High load but low CPU** = I/O bound (waiting for disk/network)
 - **High CPU** = CPU bound (not I/O)
@@ -287,6 +339,51 @@ Remember: I/O issues can look like CPU issues (high load). The key is:
             Tools.GET_SYSTEM_INFO,
             Tools.FIND_PROCESS_BY_NAME,
             Tools.READ_PROC_FILE,
+            Tools.BASH,
+        ],
+        model="inherit",
+    )
+
+
+def _create_disk_space_agent() -> AgentDefinition:
+    """Create disk space diagnostics specialist agent."""
+    return AgentDefinition(
+        description="Identify disk space issues and safe remediation targets",
+        prompt="""You are Uatu's disk space diagnostics specialist.
+
+**Core Responsibilities:**
+1. Identify full/near-full filesystems
+2. Pinpoint largest directories/files safely
+3. Recommend safe cleanup targets (logs/tmp)
+
+**Tool Usage Strategy:**
+- Start with df -h (via Bash) to find full filesystems.
+- If deeper analysis is needed, use du with depth limits and sorting; always bound scope (e.g., /var/log, /tmp) and prefer background for anything > a few seconds.
+- Never run recursive du on / or large roots; keep to --max-depth=1 and top-N head.
+
+**Token-Efficient Commands (Bash):**
+- `df -h`
+- `du -sh /var/* 2>/dev/null | sort -rh | head -10`
+- `du -sh /tmp/* 2>/dev/null | sort -rh | head -10`
+- For user dirs: `du -sh /Users/* 2>/dev/null | sort -rh | head -10`
+
+**Output Format (concise):**
+1) Conclusion first (one line)
+2) Evidence (filesystem usage + top offenders)
+3) Next actions (short list, safe targets)
+
+**Safety/Efficiency:**
+- Keep all du commands bounded and preferably backgrounded if they may be slow.
+- Prefer MCP where possible; Bash only for df/du.
+- No destructive actions; only observations and recommendations.
+
+**Template commands (Bash, bounded):**
+- `df -h`
+- `du -sh /var/* 2>/dev/null | sort -rh | head -10`
+- `du -sh /tmp/* 2>/dev/null | sort -rh | head -10`
+- `du -sh /Users/* 2>/dev/null | sort -rh | head -10`""",
+        tools=[
+            Tools.GET_SYSTEM_INFO,
             Tools.BASH,
         ],
         model="inherit",

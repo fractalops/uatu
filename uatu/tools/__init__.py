@@ -13,6 +13,7 @@ from uatu.tools.proc_tools import (
     ReadProcFile,
 )
 from uatu.tools.processes import ProcessAnalyzer
+from uatu.tools.safe_mcp import create_safe_mcp_server
 
 
 def create_system_tools_mcp_server(capabilities: ToolCapabilities | None = None) -> Any:
@@ -100,4 +101,5 @@ __all__ = [
     "ToolRegistry",
     "create_tool_registry",
     "create_system_tools_mcp_server",
+    "create_safe_mcp_server",
 ]

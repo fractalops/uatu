@@ -15,6 +15,7 @@ class SessionStats:
     last_turn_input_tokens: int = 0
     last_turn_output_tokens: int = 0
     last_turn_cost_usd: float = 0.0
+    max_budget_usd: float | None = None
 
     def update_from_result(self, result_message) -> None:
         """Update stats from a ResultMessage.
@@ -65,6 +66,10 @@ class SessionStats:
 
         # Format cost
         cost_str = f"${self.total_cost_usd:.4f}" if self.total_cost_usd > 0 else "$0.00"
+        budget_str = ""
+        if self.max_budget_usd is not None and self.total_cost_usd is not None:
+            remaining = max(self.max_budget_usd - self.total_cost_usd, 0)
+            budget_str = f" | budget ${remaining:.4f} left"
 
         parts = [
             f"Conv {self.conversation_turns} ({self.internal_turns} internal)",
@@ -73,7 +78,7 @@ class SessionStats:
             cost_str,
         ]
 
-        return " | ".join(parts)
+        return " | ".join(parts) + budget_str
 
     def reset(self) -> None:
         """Reset all statistics to initial state."""

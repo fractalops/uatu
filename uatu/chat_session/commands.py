@@ -41,12 +41,31 @@ class SlashCommandHandler:
             self._show_help()
             return "continue"
 
-        if command == "/clear":
-            self.console.print("[cyan]✓ Clearing conversation context...[/cyan]")
+        if command in ("/clear", "/reset"):
+            label_map = {
+                "/clear": "Clearing conversation context...",
+                "/reset": "Resetting conversation context...",
+            }
+            label = label_map.get(command, "Resetting conversation context...")
+            self.console.print(f"[cyan]✓ {label}[/cyan]")
             return "clear"
+
+        if command in ("/recover", "/rewind"):
+            self.console.print(
+                "[yellow]Recovering to a prior point is not yet supported. Use /clear to start fresh.[/yellow]"
+            )
+            return "continue"
 
         if command.startswith("/allowlist"):
             self._handle_allowlist(command)
+            return "continue"
+
+        if command == "/interrupt":
+            # Interrupt is handled in ChatSession using current client
+            return "interrupt"
+
+        if command == "/resume":
+            self.console.print("[cyan]→ Suggest asking for a lighter, MCP-first plan to continue.[/cyan]")
             return "continue"
 
         self.console.print(f"[red]Unknown command: {command}[/red]")

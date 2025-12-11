@@ -33,6 +33,12 @@ class Tools:
         CHECK_PORT_BINDING,
         READ_PROC_FILE,
     ])
+    MCP_SAFE_TOOLS: Final[frozenset[str]] = MCP_TOOLS
+    SAFE_HINT_TOOLS: Final[frozenset[str]] = frozenset([
+        "safe-hints__top_processes",
+        "safe-hints__disk_usage_summary",
+        "safe-hints__listening_ports_hint",
+    ])
 
     NETWORK_TOOLS: Final[frozenset[str]] = frozenset([
         WEB_FETCH,

@@ -26,6 +26,14 @@ class Settings(BaseSettings):
         default=4096,
         description="Maximum tokens for agent responses",
     )
+    uatu_max_turns: int = Field(
+        default=20,
+        description="Maximum turns per conversation",
+    )
+    uatu_max_budget_usd: float | None = Field(
+        default=None,
+        description="Optional max budget (USD) per session; None to disable",
+    )
     uatu_temperature: float = Field(
         default=0.0,
         description="Temperature for agent responses (0.0 = deterministic)",
@@ -59,11 +67,28 @@ class Settings(BaseSettings):
         description="Console width. 80=default, 0=full terminal, None=auto-detect, >0=specific width",
     )
 
+    # Tool surface
+    uatu_tools_mode: str = Field(
+        default="default",
+        description="Tool surface: default | minimal | none",
+    )
+
     # Agent Configuration
     uatu_enable_subagents: bool = Field(
         default=True,
         description="If true, enable specialized diagnostic subagents (cpu, memory, network, io)",
     )
+
+    # Skills (filesystem-based)
+    uatu_enable_skills: bool = Field(
+        default=False,
+        description="If true, enable Claude Skills from filesystem",
+    )
+    uatu_setting_sources: list[str] | None = Field(
+        default=None,
+        description='Skill setting sources, e.g., ["user","project"]; defaults to both when skills enabled',
+    )
+
 
 
 def get_settings() -> Settings:

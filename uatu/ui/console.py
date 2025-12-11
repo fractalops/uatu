@@ -23,11 +23,18 @@ class ConsoleRenderer:
         """
         self.console = console or Console()
 
-    def show_welcome(self, subagents_enabled: bool = False) -> None:
+    def show_welcome(
+        self,
+        subagents_enabled: bool = False,
+        read_only: bool = True,
+        allow_network: bool = False,
+    ) -> None:
         """Show welcome message for interactive chat.
 
         Args:
             subagents_enabled: Whether specialized diagnostic agents are enabled
+            read_only: Whether the session is in read-only mode
+            allow_network: Whether network commands are allowed
         """
         self.console.print(
             Panel.fit(
@@ -36,14 +43,20 @@ class ConsoleRenderer:
             )
         )
         self.console.print()
-        self.console.print("[dim]Commands: /help, /exit, /allowlist[/dim]")
-        self.console.print("[dim]Context is maintained across messages - follow-up questions work![/dim]")
-        self.console.print("[dim]Tip: Use 'Always allow' to skip permission prompts for trusted commands[/dim]")
+        self.console.print("[dim]Commands: /help, /exit, /clear, /reset, /recover (coming soon), /allowlist[/dim]")
+        self.console.print("[dim]Context persists across turns; follow-ups work.[/dim]")
+        self.console.print("[dim]Approvals: 'Always allow' skips prompts for trusted commands.[/dim]")
+
+        # Mode indicators
+        ro_text = "Read-only mode: ON" if read_only else "Read-only mode: OFF (writes allowed)"
+        net_text = "Network commands: ALLOWED" if allow_network else "Network commands: BLOCKED"
+        self.console.print(f"[dim]{ro_text} · {net_text}[/dim]")
+        self.console.print("[dim]Tools run with filters; background long scans when possible.[/dim]")
 
         # Show subagent status if enabled
         if subagents_enabled:
             self.console.print(
-                "[dim cyan]Specialized agents: CPU/Memory, Network, I/O diagnostics[/dim cyan]"
+                "[dim cyan]Specialized agents: CPU/Memory, Network, I/O, Disk Space diagnostics[/dim cyan]"
             )
 
         self.console.print()
@@ -56,6 +69,8 @@ class ConsoleRenderer:
                 "/help             - Show this help message\n"
                 "/exit             - Exit the chat\n"
                 "/clear            - Clear conversation context (start fresh)\n"
+                "/reset            - Reset conversation context (alias for /clear)\n"
+                "/recover          - (coming soon) restore conversation to a prior point\n"
                 "/allowlist        - Show allowlisted commands\n"
                 "/allowlist add <command> - Add a command to allowlist\n"
                 "/allowlist clear  - Clear all allowlist entries\n"
@@ -83,12 +98,13 @@ class ConsoleRenderer:
         spinner = Spinner("dots", text=f"[cyan]{text}")
         return Live(spinner, console=self.console, refresh_per_second=10, transient=True)
 
-    def status(self, message: str, status: str = "info") -> None:
+    def status(self, message: str, status: str = "info", dim: bool = False) -> None:
         """Print a status message with indicator.
 
         Args:
             message: Status message
             status: Type of status (success, error, warning, info)
+            dim: If true, render the message dimmed
         """
         icons = {
             "success": ("✓", "green"),
@@ -98,7 +114,17 @@ class ConsoleRenderer:
         }
 
         icon, color = icons.get(status, ("→", "cyan"))
-        self.console.print(f"[{color}]{icon}[/{color}] {message}")
+        content = message if not dim else f"[dim]{message}[/dim]"
+        self.console.print(f"[{color}]{icon}[/{color}] {content}")
+
+    @staticmethod
+    def clean_tool_name(tool_name: str) -> str:
+        """Produce a friendly tool name for display."""
+        if tool_name.startswith("mcp__"):
+            return tool_name.split("__")[-1].replace("_", " ").title()
+        if tool_name.startswith("safe-hints__"):
+            return tool_name.split("__")[-1].replace("_", " ").title()
+        return tool_name
 
     def show_tool_usage(self, tool_name: str, tool_input: dict | None = None) -> None:
         """Display tool usage with consistent formatting.
@@ -120,9 +146,14 @@ class ConsoleRenderer:
                 cmd_preview += "..."
             self.console.print(f"[dim]  $ {cmd_preview}[/dim]")
 
+            # Surface a lightweight safety hint for potentially slow scans
+            slow_patterns = ("du -sh", "find ", "nc -z", "du --max-depth")
+            if any(pat in command for pat in slow_patterns):
+                self.console.print("[dim yellow]  ↳ Consider run_in_background=true for slow scans[/dim yellow]")
+
         # MCP tools: Show with MCP prefix and parameters
         elif tool_name.startswith("mcp__"):
-            clean_name = tool_name.split("__")[-1].replace("_", " ").title()
+            clean_name = self.clean_tool_name(tool_name)
             self.console.print(f"[dim]→ MCP: {clean_name}[/dim]")
 
             if tool_input:
@@ -143,7 +174,7 @@ class ConsoleRenderer:
 
         # Other tools
         else:
-            self.console.print(f"[dim]→ {tool_name}[/dim]")
+            self.console.print(f"[dim]→ {self.clean_tool_name(tool_name)}[/dim]")
 
     def show_tool_result(self, tool_name: str, tool_response: Any) -> None:
         """Display tool result preview.

@@ -10,8 +10,8 @@ from typing import Any
 class ToolPreviewFormatter:
     """Formats tool results into minimal previews."""
 
-    MAX_PREVIEW_LENGTH = 100  # Increased to handle wider terminal output
-    MAX_LINES_TO_SHOW = 5  # Show up to 5 lines of output
+    MAX_PREVIEW_LENGTH = 90  # Keep inline summaries short
+    MAX_LINES_TO_SHOW = 3  # Inline summaries only show a few lines
 
     @classmethod
     def format_preview(cls, tool_name: str, tool_response: Any) -> str | None:
@@ -68,7 +68,7 @@ class ToolPreviewFormatter:
     def _format_bash_preview(cls, response: Any) -> str:
         """Format Bash command output preview.
 
-        Shows line count and first line of output.
+        Shows line count and first line of output (inline).
         """
         if not response:
             return "✓ No output"
@@ -94,49 +94,32 @@ class ToolPreviewFormatter:
             # Fallback: stringify whatever we got
             output = str(response) if response else ""
 
+        # Normalize to string for safe checks
+        if not isinstance(output, str):
+            output = str(output)
+
         if not output or not output.strip():
             return "✓ No output"
 
         # Filter out SDK-internal permission messages - these are noisy and already handled by our permission handler
-        if "Hook requested permission" in output or "permission behavior:" in output.lower():
+        lowered = output.lower()
+        if "hook requested permission" in lowered or "permission behavior:" in lowered:
             return None  # Don't show anything - our permission handler already printed the user-friendly message
 
         lines = output.strip().split("\n")
         line_count = len(lines)
 
-        # Show up to MAX_LINES_TO_SHOW lines
-        preview_lines = []
-        for line in lines[:cls.MAX_LINES_TO_SHOW]:
-            line = line.strip()
-            if not line:
-                continue
-            # Truncate long lines
-            if len(line) > cls.MAX_PREVIEW_LENGTH:
-                line = line[: cls.MAX_PREVIEW_LENGTH - 3] + "..."
-            preview_lines.append(line)
+        first_line = lines[0].strip()
+        if len(first_line) > cls.MAX_PREVIEW_LENGTH:
+            first_line = first_line[: cls.MAX_PREVIEW_LENGTH - 3] + "..."
 
-        if not preview_lines:
-            return "✓ No output"
-
-        # Format the preview
         if line_count == 1:
-            return f"✓ {preview_lines[0]}"
-        elif line_count <= cls.MAX_LINES_TO_SHOW:
-            # Show all lines
-            result = f"✓ {line_count} lines:\n"
-            for line in preview_lines:
-                result += f"    {line}\n"
-            return result.rstrip()
-        else:
-            # Show first few lines + indicator of more
-            result = f"✓ {line_count} lines (showing first {len(preview_lines)}):\n"
-            for line in preview_lines:
-                result += f"    {line}\n"
-            return result.rstrip()
+            return f"✓ {first_line}"
+        return f"✓ {line_count} lines | {first_line}"
 
     @classmethod
     def _format_mcp_preview(cls, tool_name: str, response: Any) -> str:
-        """Format MCP tool result preview."""
+        """Format MCP tool result preview as a single line."""
         # Extract the actual tool name (remove mcp__ prefix and server name)
         parts = tool_name.split("__")
         clean_name = parts[-1].replace("_", " ").title() if len(parts) > 1 else tool_name
@@ -149,7 +132,7 @@ class ToolPreviewFormatter:
                 load = response.get("load", {})
                 mem_pct = mem.get("percent", 0)
                 load_1m = load.get("1min", 0)
-                return f"✓ Memory: {mem_pct:.0f}%, Load: {load_1m:.1f}"
+                return f"✓ mem {mem_pct:.0f}% | load {load_1m:.1f}"
 
             # Special handling for process tree
             elif "total_processes" in response:
@@ -157,13 +140,12 @@ class ToolPreviewFormatter:
                 return f"✓ {total} processes"
 
             # Try to extract meaningful summary
-            elif "count" in response:
+            if "count" in response:
                 return f"✓ {response['count']} items"
-            elif len(response) == 0:
+            if len(response) == 0:
                 return "✓ Empty result"
-            else:
-                key_count = len(response.keys())
-                return f"✓ {key_count} fields"
+            key_count = len(response.keys())
+            return f"✓ {key_count} fields"
 
         elif isinstance(response, list):
             count = len(response)
@@ -205,7 +187,7 @@ class ToolPreviewFormatter:
     @classmethod
     def _format_default_preview(cls, response: Any) -> str:
         """Format generic response preview."""
-        if isinstance(response, list | tuple):
+        if isinstance(response, (list, tuple)):
             return f"✓ {len(response)} items"
 
         elif isinstance(response, dict):

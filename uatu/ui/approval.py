@@ -66,7 +66,7 @@ class ApprovalPrompt:
             options.append("  ○ ", style="dim")
             options.append("Deny\n", style="dim")
 
-        options.append("\n(Use ↑↓ arrow keys, Enter to confirm)", style="dim")
+        options.append("\n(↑↓ / Enter or a/A/d)", style="dim")
         return options
 
     async def get_bash_approval(self, description: str, command: str) -> tuple[bool, bool]:
@@ -128,6 +128,9 @@ class ApprovalPrompt:
             border_style="cyan",
         ))
 
+        # Quick inline hint for hotkeys
+        self.console.print("[dim]Allow once (a) | Always (A) | Deny (d)[/dim]")
+
         # Track selection state
         selected = [2]  # Start with "Deny" (index 2)
         running = [True]
@@ -145,6 +148,24 @@ class ApprovalPrompt:
 
         @kb.add(Keys.Enter)
         def _(event):
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("a")
+        def _(event):
+            selected[0] = 0
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("A")
+        def _(event):
+            selected[0] = 1
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("d")
+        def _(event):
+            selected[0] = 2
             running[0] = False
             event.app.exit(result=selected[0])
 
@@ -239,7 +260,7 @@ class ApprovalPrompt:
             options.append("  ○ ", style="dim")
             options.append("Deny\n", style="dim")
 
-        options.append("\n(Use ↑↓ arrow keys, Enter to confirm)", style="dim")
+        options.append("\n(↑↓ / Enter or a/A/d)", style="dim")
         return options
 
     async def get_network_approval(self, tool_name: str, url: str) -> tuple[bool, bool]:
@@ -286,6 +307,9 @@ class ApprovalPrompt:
             border_style="cyan",
         ))
 
+        # Quick inline hint for hotkeys
+        self.console.print("[dim]Allow once (a) | Always (A) | Deny (d)[/dim]")
+
         # Track selection state
         selected = [2]  # Start with "Deny"
         running = [True]
@@ -303,6 +327,24 @@ class ApprovalPrompt:
 
         @kb.add(Keys.Enter)
         def _(event):
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("a")
+        def _(event):
+            selected[0] = 0
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("A")
+        def _(event):
+            selected[0] = 1
+            running[0] = False
+            event.app.exit(result=selected[0])
+
+        @kb.add("d")
+        def _(event):
+            selected[0] = 2
             running[0] = False
             event.app.exit(result=selected[0])
 

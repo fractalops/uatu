@@ -4,6 +4,7 @@ import asyncio
 
 from claude_agent_sdk import ClaudeSDKClient
 from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.styles import Style as PromptStyle
@@ -34,9 +35,9 @@ Your sacred duty is to:
 4. GUIDE with actionable knowledge, though you do not act directly
 
 Available Tools:
-- **Bash**: Your primary tool for system investigation. Use ps, top, df, netstat, lsof, etc.
-- **MCP tools**: Specialized monitoring tools (get_system_info, list_processes, etc.)
-  - Use these as fallbacks if bash commands fail or are unavailable
+- **MCP tools (preferred for safety)**: get_system_info, list_processes, get_process_tree, find_process_by_name, check_port_binding, read_proc_file
+- **Safe-hints MCP tools**: top_processes, disk_usage_summary, listening_ports_hint (use these instead of inventing Bash when possible)
+- **Bash (use sparingly)**: only when MCP/safe-hints cannot answer the question
   - IMPORTANT: When using list_processes, ALWAYS use aggressive filters to avoid token overflow:
     * For high-memory processes: min_memory_mb=100 or higher (NOT 0)
     * For high-CPU processes: min_cpu_percent=5 or higher (NOT 0)
@@ -50,6 +51,26 @@ Available Tools:
   - Use when you need to look up unfamiliar error messages
   - Find relevant documentation or troubleshooting guides
   - Research known issues or solutions
+
+Subagents (use when the issue clearly fits; one at a time):
+- Port/binding/connection/socket issues → network-diagnostics
+- High CPU/memory → cpu-memory-diagnostics
+- Disk full or space analysis → disk-space-diagnostics
+- I/O stalls or file descriptor leaks → io-diagnostics
+Keep outputs concise and evidence-first.
+
+Tool Selection & Safety Heuristics:
+- Prefer MCP and safe-hints tools first, especially in read-only mode or after approvals are denied.
+- Avoid Bash for simple CPU/memory/port/disk summaries; use MCP equivalents or safe-hints guidance.
+- If a tool fails, do NOT retry the same failing command; switch to MCP, add filters, or choose a safer variant.
+- If the scenario is outside known patterns/OS behaviors, ask 1-2 clarifying questions before heavy commands; stick to lightweight MCP probes first.
+- When reading logs with Bash, always bound scope (tail/head/last N minutes) and avoid verbose flags unless necessary.
+- Use vetted Bash templates when Bash is necessary:
+  * Processes: ps aux | sort -k3 -rn | head -n 5
+  * Memory: ps aux | sort -k4 -rn | head -n 5
+  * Disk: df -h; du -sh /var/log/* 2>/dev/null | sort -rh | head -10 (background if large)
+  * Ports: lsof -i -P -n | grep LISTEN   or   ss -tlnp
+  * Net summary: ss -s
 
 Token-Efficient Diagnostic Patterns:
 When using Bash, filter and aggregate data BEFORE returning results. Examples:
@@ -80,6 +101,7 @@ When using Bash, filter and aggregate data BEFORE returning results. Examples:
 - Connection count by state: `ss -tan | awk '{print $1}' | sort | uniq -c | sort -rn`
 - Listening ports: `ss -tlnp` or `lsof -i -P -n | grep LISTEN`
 - Top network connections: `ss -tunap | awk '{print $6}' | sort | uniq -c | sort -rn | head -5`
+- On macOS, `ss` is unavailable; use `lsof -i -P -n | grep LISTEN` and `netstat -an | grep LISTEN` instead.
 
 **System Health:**
 - Zombie processes: `ps aux | awk '$8=="Z" {print $2, $11}'`
@@ -92,11 +114,11 @@ When using Bash, filter and aggregate data BEFORE returning results. Examples:
 - Swap usage: `swapon -s` (Linux) or `sysctl vm.swapusage` (macOS)
 
 Note: Some commands may require elevated privileges. If a command fails with permission denied,
-try alternative approaches or inform the user that sudo access would be needed.
+try MCP alternatives, filtered reads, or inform the user that sudo would be needed.
 
 Note on Read-Only Mode:
 - If you see "Bash commands disabled by UATU_READ_ONLY", the system is in read-only mode
-- In read-only mode, use the MCP tools instead
+- In read-only mode, use the MCP tools and safe-hints instead
 - Always respect the security settings - don't repeatedly try bash if it's blocked
 
 CRITICAL - Security Denials:
@@ -122,6 +144,8 @@ When analyzing issues:
 - Correlate multiple signals (CPU, memory, process counts)
 - Check external dependencies (APIs, databases, network services)
 - Use efficient commands that filter/aggregate data before returning
+- After multiple tools, emit a concise "What I learned" bullet list summarizing tool outputs
+- If a tool fails, switch modality (MCP/safe-hints) or tighten filters; do not loop on the same failing command
 - **CRITICAL - Avoid slow commands:**
   * NEVER run `du -sh /*` or scan entire filesystems
   * Always use `--max-depth=1` or target specific directories
@@ -144,6 +168,11 @@ Communication style:
 - When uncertain, acknowledge the limits of observation
 - Guide users to understanding, but respect that they must act
 
+Response structure (keep it scannable):
+1) Conclusion — one line
+2) Evidence — key bullets with metrics/PIDs/ports (concise)
+3) Next steps — short actionable list
+
 Example phrases:
 - "I observe three processes consuming excessive resources..."
 - "The logs reveal a pattern of failed connections..."
@@ -163,6 +192,10 @@ or request observation of related phenomena."""
 
     async def _run_async(self) -> None:
         """Run async chat loop."""
+        def rprompt() -> str:
+            """No rprompt content; stats rendered with spinner in output."""
+            return ""
+
         # Setup prompt session with autocompletion
         session: PromptSession[str] = PromptSession(
             history=InMemoryHistory(),
@@ -179,12 +212,24 @@ or request observation of related phenomena."""
             completer=SlashCommandCompleter(),
             complete_while_typing=True,  # Show completions automatically when typing /
             complete_style=CompleteStyle.COLUMN,  # Single column for minimal look
+            rprompt=rprompt,
         )
+        # Allow message handler to refresh the prompt (for live stats), thread-safe
+        def refresh_prompt() -> None:
+            app = session.app
+            if app and app.loop:
+                try:
+                    app.loop.call_soon_threadsafe(app.invalidate)
+                except Exception:
+                    pass
+
+        self.components.message_handler.refresh_prompt = refresh_prompt
 
         # Outer loop: recreate client when context is cleared
         while True:
             # Create long-lived client for conversation context
             async with ClaudeSDKClient(self.components.sdk_options) as client:
+                self.current_client = client
                 # Inner loop: handle conversation
                 while True:
                     try:
@@ -195,6 +240,21 @@ or request observation of related phenomena."""
                         if not user_input.strip():
                             continue
 
+                        # Budget / turn guardrails
+                        stats = self.components.message_handler.stats
+                        remaining_turns = self.components.settings.uatu_max_turns - stats.conversation_turns
+                        if remaining_turns <= 3:
+                            self.components.console.print(f"[yellow]Warning: {remaining_turns} turns remaining (max {self.components.settings.uatu_max_turns}).[/yellow]")
+                        if (
+                            self.components.settings.uatu_max_budget_usd is not None
+                            and stats.total_cost_usd is not None
+                        ):
+                            remaining_budget = self.components.settings.uatu_max_budget_usd - stats.total_cost_usd
+                            if remaining_budget <= max(0.5, 0.1 * self.components.settings.uatu_max_budget_usd):
+                                self.components.console.print(
+                                    f"[yellow]Warning: budget remaining ${remaining_budget:.4f} (max ${self.components.settings.uatu_max_budget_usd:.4f}).[/yellow]"
+                                )
+
                         # Handle slash commands
                         if user_input.startswith("/"):
                             result = self.components.command_handler.handle_command(user_input)
@@ -204,6 +264,13 @@ or request observation of related phenomena."""
                                 # Reset stats when clearing context
                                 self.components.message_handler.reset_stats()
                                 break  # Break inner loop to recreate client
+                            elif result == "interrupt":
+                                try:
+                                    await client.interrupt()
+                                    self.components.console.print("[yellow]→ Interrupt sent[/yellow]")
+                                except Exception as e:
+                                    self.components.console.print(f"[red]Interrupt failed: {e}[/red]")
+                                continue
                             # result == "continue" - keep going
                             continue
 
@@ -226,41 +293,10 @@ or request observation of related phenomena."""
             prompt: The query to send to Claude
         """
         try:
-            # Create client with same options as interactive mode
+            # Reuse the streaming handler for consistency (includes stats and previews)
             async with ClaudeSDKClient(self.components.sdk_options) as client:
-                # Send query
-                await client.query(prompt)
-
-                # Collect and display response using existing message handler
-                response_text = ""
-                async for message in client.receive_response():
-                    if hasattr(message, "content"):
-                        for block in message.content:
-                            # Text content
-                            if hasattr(block, "text"):
-                                response_text += block.text
-
-                            # Tool usage - show inline
-                            elif hasattr(block, "name"):
-                                tool_name = block.name
-                                tool_input = block.input if hasattr(block, "input") else {}
-
-                                # Show tool usage (same as interactive mode)
-                                self.components.renderer.show_tool_usage(tool_name, tool_input)
-
-                # Display final response (same as interactive mode)
-                if response_text:
-                    self.components.console.print()
-                    self.components.console.print("[dim]─────────────────────────────────────────[/dim]")
-                    self.components.console.print("[bold cyan]Uatu:[/bold cyan]")
-                    self.components.console.print()
-                    from uatu.ui.markdown import LeftAlignedMarkdown
-
-                    md = LeftAlignedMarkdown(response_text)
-                    self.components.console.print(md)
-                    self.components.console.print()
-                    self.components.console.print("[dim]─────────────────────────────────────────[/dim]")
-                    self.components.console.print()
+                self.current_client = client
+                await self.components.message_handler.handle_message(client, prompt)
 
         except Exception as e:
             self.components.renderer.error(str(e))
@@ -270,7 +306,9 @@ or request observation of related phenomena."""
         """Run the interactive chat session."""
         # Show welcome with subagent status
         self.components.renderer.show_welcome(
-            subagents_enabled=self.components.settings.uatu_enable_subagents
+            subagents_enabled=self.components.settings.uatu_enable_subagents,
+            read_only=self.components.settings.uatu_read_only,
+            allow_network=self.components.settings.uatu_allow_network,
         )
 
         # Run async loop
