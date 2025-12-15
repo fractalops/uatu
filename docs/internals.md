@@ -77,6 +77,13 @@ User-in-control model:
 - Previews/summaries to reduce output.
 - Stdin mode stays single-turn; minimal context.
 
+## Telemetry (opt-out)
+
+- Controlled by `UATU_ENABLE_TELEMETRY` (default true) and `UATU_TELEMETRY_PATH` (default `~/.uatu/telemetry.jsonl`).
+- Emits lightweight JSONL events for sessions (start/end), turns, and tool calls.
+- Privacy guardrails: no user text, no full commands/outputs; only base command, flags, durations, status, and counts.
+- Transport is local file today; emitter is noop when disabled.
+
 ## Current Architecture
 
 **Project Structure (high level):**

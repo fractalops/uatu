@@ -32,6 +32,12 @@ class ApprovalPrompt:
         self.console = console or Console()
         self._approval_count = 0  # Track number of approvals in this session
 
+    @staticmethod
+    def _fallback_choice(prompt: str) -> int:
+        """Fallback when interactive UI fails; auto-deny to avoid blocking."""
+        # We avoid blocking stdin prompts which can hang in some terminals.
+        return 2  # deny by default
+
     def _render_bash_approval_options(self, selected_index: int, command: str) -> Text:
         """Render bash approval options with current selection highlighted."""
         options = Text()
@@ -182,6 +188,8 @@ class ApprovalPrompt:
             mouse_support=False,
         )
 
+        approval_timeout = 30.0  # seconds before auto-deny to avoid aborts
+
         # Use Rich Live to update the selection display
         with Live(
             self._render_bash_approval_options(selected[0], command),
@@ -203,11 +211,17 @@ class ApprovalPrompt:
             update_thread.start()
 
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_app)
-
-            # Stop the update thread
-            running[0] = False
-            update_thread.join(timeout=0.5)
+            try:
+                result = await asyncio.wait_for(loop.run_in_executor(None, run_app), timeout=approval_timeout)
+            except (TimeoutError, asyncio.CancelledError):
+                self.console.print(
+                    f"[yellow]Approval UI timed out after {int(approval_timeout)}s; denying to stay safe.[/yellow]"
+                )
+                result = self._fallback_choice("")
+            finally:
+                # Stop the update thread
+                running[0] = False
+                update_thread.join(timeout=0.5)
 
         # 0 = Allow, 1 = Always allow, 2 = Deny
         approved = result in [0, 1]
@@ -361,6 +375,8 @@ class ApprovalPrompt:
             mouse_support=False,
         )
 
+        approval_timeout = 30.0  # seconds before auto-deny to avoid aborts
+
         # Live update loop
         with Live(
             self._render_network_approval_options(selected[0], url),
@@ -380,10 +396,17 @@ class ApprovalPrompt:
             update_thread.start()
 
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_app)
-
-            running[0] = False
-            update_thread.join(timeout=0.5)
+            try:
+                result = await asyncio.wait_for(loop.run_in_executor(None, run_app), timeout=approval_timeout)
+            except (TimeoutError, asyncio.CancelledError):
+                timeout_msg = (
+                    f"Network approval UI timed out after {int(approval_timeout)}s; denying to stay safe."
+                )
+                self.console.print(f"[yellow]{timeout_msg}[/yellow]")
+                result = self._fallback_choice("")
+            finally:
+                running[0] = False
+                update_thread.join(timeout=0.5)
 
         # 0 = Allow, 1 = Always allow, 2 = Deny
         approved = result in [0, 1]

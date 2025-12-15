@@ -16,6 +16,13 @@ class Tools:
     FIND_PROCESS_BY_NAME: Final[str] = "mcp__system-tools__find_process_by_name"
     CHECK_PORT_BINDING: Final[str] = "mcp__system-tools__check_port_binding"
     READ_PROC_FILE: Final[str] = "mcp__system-tools__read_proc_file"
+    GET_DIRECTORY_SIZES: Final[str] = "mcp__system-tools__get_directory_sizes"
+    FIND_LARGE_FILES: Final[str] = "mcp__system-tools__find_large_files"
+    DISK_SCAN_SUMMARY: Final[str] = "mcp__system-tools__disk_scan_summary"
+    GET_CONNECTION_SUMMARY: Final[str] = "mcp__system-tools__get_connection_summary"
+    GET_RESOURCE_HOGS: Final[str] = "mcp__system-tools__get_resource_hogs"
+    GET_PROCESS_THREADS: Final[str] = "mcp__system-tools__get_process_threads"
+    GET_PROCESS_FILES: Final[str] = "mcp__system-tools__get_process_files"
 
     # SDK Built-in Tools
     BASH: Final[str] = "Bash"
@@ -32,6 +39,13 @@ class Tools:
         FIND_PROCESS_BY_NAME,
         CHECK_PORT_BINDING,
         READ_PROC_FILE,
+        GET_DIRECTORY_SIZES,
+        FIND_LARGE_FILES,
+        DISK_SCAN_SUMMARY,
+        GET_CONNECTION_SUMMARY,
+        GET_RESOURCE_HOGS,
+        GET_PROCESS_THREADS,
+        GET_PROCESS_FILES,
     ])
     MCP_SAFE_TOOLS: Final[frozenset[str]] = MCP_TOOLS
     SAFE_HINT_TOOLS: Final[frozenset[str]] = frozenset([
@@ -62,6 +76,15 @@ class Tools:
         FIND_PROCESS_BY_NAME,
         CHECK_PORT_BINDING,
         READ_PROC_FILE,
+        GET_DIRECTORY_SIZES,
+        FIND_LARGE_FILES,
+        DISK_SCAN_SUMMARY,
+        GET_CONNECTION_SUMMARY,
+        GET_RESOURCE_HOGS,
+        GET_PROCESS_THREADS,
+        GET_PROCESS_FILES,
+        # Safe hints (lightweight, read-only helpers)
+        *SAFE_HINT_TOOLS,
         BASH,
         WEB_FETCH,
         WEB_SEARCH,

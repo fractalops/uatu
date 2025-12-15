@@ -28,6 +28,7 @@ class ConsoleRenderer:
         subagents_enabled: bool = False,
         read_only: bool = True,
         allow_network: bool = False,
+        require_approval: bool = True,
     ) -> None:
         """Show welcome message for interactive chat.
 
@@ -35,17 +36,21 @@ class ConsoleRenderer:
             subagents_enabled: Whether specialized diagnostic agents are enabled
             read_only: Whether the session is in read-only mode
             allow_network: Whether network commands are allowed
+            require_approval: Whether user approvals are required for risky actions
         """
         self.console.print(
             Panel.fit(
-                "[bold blue]Uatu - The Watcher[/bold blue]\n[dim]Interactive System Troubleshooting Assistant[/dim]",
+                "[bold blue]Uatu [/bold blue]\n[dim]Your Interactive System Troubleshooting Assistant[/dim]",
                 border_style="blue",
             )
         )
         self.console.print()
         self.console.print("[dim]Commands: /help, /exit, /clear, /reset, /recover (coming soon), /allowlist[/dim]")
         self.console.print("[dim]Context persists across turns; follow-ups work.[/dim]")
-        self.console.print("[dim]Approvals: 'Always allow' skips prompts for trusted commands.[/dim]")
+        if require_approval:
+            self.console.print("[dim]Approvals: 'Always allow' skips prompts for trusted commands.[/dim]")
+        else:
+            self.console.print("[dim]Approvals: disabled (auto-allow; safety filters still enforced).[/dim]")
 
         # Mode indicators
         ro_text = "Read-only mode: ON" if read_only else "Read-only mode: OFF (writes allowed)"
@@ -176,6 +181,55 @@ class ConsoleRenderer:
         else:
             self.console.print(f"[dim]→ {self.clean_tool_name(tool_name)}[/dim]")
 
+    def show_text(self, text: str) -> None:
+        """Render assistant text, preferring structured layout if detected."""
+        if not self._render_structured(text):
+            from uatu.ui.markdown import LeftAlignedMarkdown
+
+            md = LeftAlignedMarkdown(text)
+            self.console.print(md)
+
+    def _render_structured(self, text: str) -> bool:
+        """Try to render Conclusion/Evidence/Next steps as panels. Return True if handled."""
+        sections: dict[str, list[str]] = {"conclusion": [], "evidence": [], "next": []}
+        current = None
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            lower = stripped.lower()
+            if lower.startswith("conclusion"):
+                current = "conclusion"
+                continue
+            if lower.startswith("evidence"):
+                current = "evidence"
+                continue
+            if lower.startswith("next steps") or lower.startswith("next"):
+                current = "next"
+                continue
+            if current:
+                sections[current].append(line)
+
+        has_structured = any(sections.values())
+        if not has_structured:
+            return False
+
+        if sections["conclusion"]:
+            content = "\n".join(sections["conclusion"]).strip()
+            if content:
+                self.console.print(Panel.fit(content, title="Conclusion", border_style="green"))
+
+        if sections["evidence"]:
+            content = "\n".join(sections["evidence"]).strip()
+            if content:
+                self.console.print(Panel(content, title="Evidence", border_style="cyan"))
+
+        if sections["next"]:
+            content = "\n".join(sections["next"]).strip()
+            if content:
+                self.console.print(Panel(content, title="Next Steps", border_style="yellow"))
+
+        return True
+
     def show_tool_result(self, tool_name: str, tool_response: Any) -> None:
         """Display tool result preview.
 
@@ -190,6 +244,7 @@ class ConsoleRenderer:
             lines = preview.split('\n')
             for line in lines:
                 self.console.print(f"[dim]  {line}[/dim]")
+        return preview
 
     def error(self, message: str) -> None:
         """Show error message."""

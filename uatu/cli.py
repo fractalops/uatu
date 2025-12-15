@@ -11,10 +11,31 @@ from uatu.chat_session.session import ChatSession
 
 app = typer.Typer(
     name="uatu",
-    help="Uatu - The Watcher: Agentic system troubleshooting powered by Claude",
+    help="Uatu: Your Interactive System Troubleshooting Assistant",
     add_completion=False,
 )
 console = Console()
+
+
+def _build_full_prompt(stdin_content: str | None, argv_args: list[str], known_commands: list[str]) -> str | None:
+    """Normalize stdin/argv into a single prompt string."""
+    prompt_parts: list[str] = []
+    for arg in argv_args:
+        if arg in known_commands:
+            return None  # subcommand flow should be handled by Typer
+        if arg.startswith("-"):
+            continue
+        prompt_parts.append(arg)
+
+    prompt = " ".join(prompt_parts) if prompt_parts else None
+
+    if stdin_content and prompt:
+        return f"Here's the data:\n\n{stdin_content}\n\nTask: {prompt}"
+    if stdin_content:
+        return stdin_content
+    if prompt:
+        return prompt
+    return None
 
 
 def main_callback(ctx: typer.Context) -> None:
@@ -25,42 +46,9 @@ def main_callback(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
 
-    # Check for stdin mode (pipe or redirect)
-    has_stdin = not sys.stdin.isatty()
-    stdin_content = sys.stdin.read().strip() if has_stdin else None
-
-    # Get any remaining arguments from sys.argv (after "uatu")
-    # Skip argv[0] (script name) and argv[1:] are the actual args
-    # Filter out known subcommands
-    import sys as sys_module
     known_commands = ["audit"]
-    prompt_parts = []
-    skip_next = False
-    for i, arg in enumerate(sys_module.argv[1:]):  # Skip program name
-        if skip_next:
-            skip_next = False
-            continue
-        if arg in known_commands:
-            # This is a subcommand, not a prompt
-            return
-        # Skip option flags
-        if arg.startswith("-"):
-            continue
-        prompt_parts.append(arg)
-
-    prompt = " ".join(prompt_parts) if prompt_parts else None
-
-    # Build the full prompt
-    full_prompt = None
-    if stdin_content and prompt:
-        # Combine stdin data with prompt
-        full_prompt = f"Here's the data:\n\n{stdin_content}\n\nTask: {prompt}"
-    elif stdin_content:
-        # Use stdin as the full prompt
-        full_prompt = stdin_content
-    elif prompt:
-        # Use argument as the full prompt
-        full_prompt = prompt
+    argv_args = sys.argv[1:]
+    full_prompt = _build_full_prompt(stdin_content=None, argv_args=argv_args, known_commands=known_commands)
 
     # Run one-shot mode if we have a prompt
     if full_prompt:
@@ -91,24 +79,14 @@ app.command(name="audit")(audit_command)
 
 def cli_main():
     """Main CLI entry point with preprocessing for stdin mode."""
-    # Check if we have stdin and extra arguments
-    # If so, run stdin mode directly to bypass Typer's command checking
+    known_commands = ["audit"]
+
+    # If stdin is provided, handle one-shot mode directly and skip Typer parsing
     if not sys.stdin.isatty():
         stdin_content = sys.stdin.read().strip()
-        if stdin_content:
-            # Check if there are any non-option arguments (excluding known subcommands)
-            known_commands = ["audit"]
-            args = [arg for arg in sys.argv[1:] if not arg.startswith("-") and arg not in known_commands]
+        full_prompt = _build_full_prompt(stdin_content or None, sys.argv[1:], known_commands)
 
-            if args:
-                # We have a prompt - combine with stdin
-                prompt = " ".join(args)
-                full_prompt = f"Here's the data:\n\n{stdin_content}\n\nTask: {prompt}"
-            else:
-                # Just use stdin as the prompt
-                full_prompt = stdin_content
-
-            # Run one-shot mode directly
+        if full_prompt:
             try:
                 session = ChatSession()
                 asyncio.run(session.run_oneshot(full_prompt))
@@ -118,7 +96,7 @@ def cli_main():
                 console.print("[yellow]Make sure ANTHROPIC_API_KEY is set in .env[/yellow]")
                 sys.exit(1)
 
-    # No stdin with extra args - let Typer handle it normally
+    # No stdin (or empty) - let Typer handle interactive/subcommand flow
     app()
 
 

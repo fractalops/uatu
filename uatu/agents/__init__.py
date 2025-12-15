@@ -357,7 +357,9 @@ def _create_disk_space_agent() -> AgentDefinition:
 3. Recommend safe cleanup targets (logs/tmp)
 
 **Tool Usage Strategy:**
-- Start with df -h (via Bash) to find full filesystems.
+- Start with disk_scan_summary (MCP) to get filesystem usage, top directories, and large files without heavy Bash.
+- Use get_directory_sizes or find_large_files (MCP) when you need a focused view.
+- Use df -h (via Bash) if needed to cross-check filesystem fullness.
 - If deeper analysis is needed, use du with depth limits and sorting; always
   bound scope (e.g., /var/log, /tmp) and prefer background for anything > a few
   seconds.
@@ -375,8 +377,9 @@ def _create_disk_space_agent() -> AgentDefinition:
 3) Next actions (short list, safe targets)
 
 **Safety/Efficiency:**
+- Prefer MCP (disk_scan_summary, get_directory_sizes, find_large_files) before Bash.
 - Keep all du commands bounded and preferably backgrounded if they may be slow.
-- Prefer MCP where possible; Bash only for df/du.
+- Bash only for df/du when MCP is insufficient.
 - No destructive actions; only observations and recommendations.
 
 **Template commands (Bash, bounded):**
@@ -387,6 +390,9 @@ def _create_disk_space_agent() -> AgentDefinition:
         tools=[
             Tools.GET_SYSTEM_INFO,
             Tools.LIST_PROCESSES,
+            Tools.DISK_SCAN_SUMMARY,
+            Tools.GET_DIRECTORY_SIZES,
+            Tools.FIND_LARGE_FILES,
             Tools.BASH,
         ],
         model="inherit",

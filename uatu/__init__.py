@@ -1,7 +1,7 @@
 """
-Uatu - The Watcher
+Uatu
 
-An agentic system troubleshooting tool powered by Claude.
+Your Interactive System Troubleshooting Assistant.
 """
 
-__version__ = "0.1.13"
+__version__ = "0.1.14"

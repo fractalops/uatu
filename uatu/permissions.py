@@ -2,11 +2,9 @@
 
 import asyncio
 import logging
-import os
 import platform
 import re
 import shutil
-import sys
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Any
@@ -36,30 +34,6 @@ HOOK_EVENT_NAME = "PreToolUse"
 # Type alias for approval callbacks
 ApprovalCallback = Callable[[str, str], Awaitable[tuple[bool, bool]]]
 NetworkApprovalCallback = Callable[[str, str], Awaitable[tuple[bool, bool]]]
-
-
-def _should_require_approval() -> bool:
-    """Determine if approval should be required based on TTY and settings.
-
-    Logic:
-    - If UATU_REQUIRE_APPROVAL is explicitly set, use that value
-    - Otherwise, auto-detect based on TTY:
-      - TTY available (interactive): require approval (safe default)
-      - No TTY (stdin mode): use allowlist only (practical default)
-
-    Returns:
-        True if approval should be required, False to use allowlist
-    """
-    # Check if explicitly set via environment
-    explicit_setting = os.environ.get("UATU_REQUIRE_APPROVAL")
-    if explicit_setting is not None:
-        # User explicitly set it - respect their choice
-        return explicit_setting.lower() in ("true", "1", "yes")
-
-    # Auto-detect based on TTY
-    # If stdin is not a TTY (piped input), default to using allowlist
-    # If stdin is a TTY (interactive), default to requiring approval
-    return sys.stdin.isatty()
 
 
 def _build_hook_response(
@@ -371,7 +345,6 @@ class PermissionHandler:
             }
 
         logger.debug(f"Network permission check for {tool_name}: {url!r}")
-
         # Validate URL for security (SSRF protection)
         is_valid, reason = validate_url(url)
         if not is_valid:

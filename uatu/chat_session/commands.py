@@ -51,16 +51,14 @@ class SlashCommandHandler:
             return "clear"
 
         if command in ("/recover", "/rewind"):
-            self.console.print(
-                "[yellow]Recovering to a prior point is not yet supported. Use /clear to start fresh.[/yellow]"
-            )
-            return "continue"
+            self.console.print("[cyan]✓ Recovering last summary and resetting context...[/cyan]")
+            return "recover"
 
         if command.startswith("/allowlist"):
             self._handle_allowlist(command)
             return "continue"
 
-        if command == "/interrupt":
+        if command in ("/interrupt", "/stop"):
             # Interrupt is handled in ChatSession using current client
             return "interrupt"
 

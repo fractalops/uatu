@@ -30,8 +30,16 @@ def create_system_tools_mcp_server(capabilities: ToolCapabilities | None = None)
 
     from uatu.tools.sdk_tools import (
         check_port_binding,
+        disk_scan_summary,
+        find_large_files,
         find_process_by_name,
+        get_connection_summary,
+        # Additional diagnostics
+        get_directory_sizes,
+        get_process_files,
+        get_process_threads,
         get_process_tree,
+        get_resource_hogs,
         get_system_info,
         list_processes,
         read_proc_file,
@@ -46,6 +54,14 @@ def create_system_tools_mcp_server(capabilities: ToolCapabilities | None = None)
             find_process_by_name,
             check_port_binding,
             read_proc_file,
+            # Additional diagnostics
+            get_directory_sizes,
+            find_large_files,
+            disk_scan_summary,
+            get_connection_summary,
+            get_resource_hogs,
+            get_process_threads,
+            get_process_files,
         ],
     )
 

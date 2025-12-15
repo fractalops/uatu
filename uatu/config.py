@@ -1,7 +1,13 @@
 """Configuration management using pydantic-settings."""
 
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_require_approval() -> bool:
+    """Auto-detect approval requirement based on TTY presence."""
+    return True
 
 
 class Settings(BaseSettings):
@@ -15,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     # Anthropic API
-    anthropic_api_key: str = Field(..., description="Anthropic API key")
+    anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
 
     # Agent Configuration
     uatu_model: str = Field(
@@ -45,12 +51,28 @@ class Settings(BaseSettings):
         description="If true, agent can only read system state, not modify it",
     )
     uatu_require_approval: bool = Field(
-        default=True,
+        default_factory=_default_require_approval,
         description="If true, require user approval before executing risky actions",
     )
     uatu_allow_network: bool = Field(
         default=False,
         description="If true, allow network commands (curl, wget, etc.) - NOT RECOMMENDED",
+    )
+    uatu_enable_telemetry: bool = Field(
+        default=True,
+        description="If true, emit opt-in local telemetry for sessions/turns/tools",
+    )
+    uatu_telemetry_path: str = Field(
+        default="~/.uatu/telemetry.jsonl",
+        description="Path for local JSONL telemetry when enabled",
+    )
+    uatu_max_background_jobs: int = Field(
+        default=1,
+        description="Max concurrent background Bash jobs",
+    )
+    uatu_background_queue_size: int = Field(
+        default=1,
+        description="Max queued background Bash jobs beyond the concurrent limit",
     )
 
     # UI Settings

@@ -16,6 +16,11 @@ class SessionStats:
     last_turn_output_tokens: int = 0
     last_turn_cost_usd: float = 0.0
     max_budget_usd: float | None = None
+    last_turn_tool_count: int = 0
+    last_turn_status: str = "ok"
+    last_turn_elapsed_ms: float | None = None
+    last_turn_bg_soft_denies: int = 0
+    last_turn_bg_hard_denies: int = 0
 
     def update_from_result(self, result_message) -> None:
         """Update stats from a ResultMessage.
@@ -71,14 +76,39 @@ class SessionStats:
             remaining = max(self.max_budget_usd - self.total_cost_usd, 0)
             budget_str = f" | budget ${remaining:.4f} left"
 
+        meta = []
+        if self.last_turn_tool_count:
+            meta.append(f"tools:{self.last_turn_tool_count}")
+        if self.last_turn_elapsed_ms is not None:
+            meta.append(f"{self.last_turn_elapsed_ms/1000:.0f}s")
+        if self.last_turn_bg_soft_denies or self.last_turn_bg_hard_denies:
+            meta.append(f"bg-blocks:{self.last_turn_bg_soft_denies}/{self.last_turn_bg_hard_denies}")
+
         parts = [
             f"Conv {self.conversation_turns} ({self.internal_turns} internal)",
             f"{format_tokens(last_turn_tokens)} tok",
             f"Session: {format_tokens(total_tokens)}",
             cost_str,
         ]
+        if meta:
+            parts.append(" ".join(meta))
 
         return " | ".join(parts) + budget_str
+
+    def update_turn_meta(
+        self,
+        tool_count: int,
+        status: str,
+        elapsed_ms: float | None,
+        bg_soft_denies: int = 0,
+        bg_hard_denies: int = 0,
+    ) -> None:
+        """Track last turn metadata for display."""
+        self.last_turn_tool_count = tool_count
+        self.last_turn_status = status
+        self.last_turn_elapsed_ms = elapsed_ms
+        self.last_turn_bg_soft_denies = bg_soft_denies
+        self.last_turn_bg_hard_denies = bg_hard_denies
 
     def reset(self) -> None:
         """Reset all statistics to initial state."""
