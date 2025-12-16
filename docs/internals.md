@@ -22,17 +22,22 @@ This document explains the architecture and implementation details of Uatu.
 #### Chat Session Layer (`uatu/chat_session/`)
 
 - `session.py`: interactive + stdin modes; shows mode/budget/turn warnings; structured response scaffold (Conclusion → Evidence → Next steps).
-- `handlers.py`: streams SDK messages; shows tool usage, previews, and per-tool timing; tracks stats.
+- `handlers.py`: streams SDK messages; shows tool usage, previews, and per-tool timing; tracks stats; manages background jobs (concurrent + queue); auto-summary on inconclusive turns.
 - `commands.py`: slash commands (`/help`, `/exit`, `/clear`/`/reset`, `/allowlist`, `/recover` notice).
+- `stats.py`: session and turn statistics tracking (tokens, cost, tool counts).
+- `components.py`: SDK hook definitions (permission, shaping, session lifecycle); auto-background for slow scans.
 
 #### Tool Layer (`uatu/tools/`)
 
-Via MCP servers:
+Via MCP servers (`sdk_tools.py`):
 - System tools: get_system_info, list_processes, get_process_tree, find_process_by_name, check_port_binding, read_proc_file.
-- Safe-hints: top_processes, disk_usage_summary, listening_ports_hint.
+- Disk tools: get_directory_sizes (multi-path parallel), find_large_files (multi-path parallel), disk_scan_summary.
+- Resource tools: get_resource_hogs (two-pass CPU measurement), get_connection_summary.
 
 Bash (SDK tool):
-- Approval-gated; used sparingly when MCP/safe-hints are insufficient.
+- Approval-gated; used sparingly when MCP tools are insufficient.
+- Auto-background for slow disk scans on large directories (via PreToolUse hook).
+- Supports concurrent background jobs (configurable via `UATU_MAX_BACKGROUND_JOBS`).
 
 #### Permission System (`uatu/permissions.py`, `uatu/allowlist.py`)
 
@@ -46,8 +51,8 @@ Bash (SDK tool):
 #### UI Layer (`uatu/ui/`)
 
 - `approval.py`: approval UI with risk levels and navigation.
-- `console.py`: welcome/help, status/timing lines, tool usage previews, friendly tool names, backgrounding hints.
-- `tool_preview.py`: concise previews with line counts/summaries.
+- `console.py`: welcome/help, status/timing lines, tool usage previews, friendly tool names, backgrounding hints; live spinner with turn phase and running tools.
+- `tool_preview.py`: concise previews with line counts/summaries; colored severity indicators (Rich); handles multi-path scan results; graceful degradation for permission errors.
 - `markdown.py`: left-aligned, minimal markdown rendering.
 
 #### CLI Layer (`uatu/cli.py`)
@@ -80,7 +85,8 @@ User-in-control model:
 ## Telemetry (opt-out)
 
 - Controlled by `UATU_ENABLE_TELEMETRY` (default true) and `UATU_TELEMETRY_PATH` (default `~/.uatu/telemetry.jsonl`).
-- Emits lightweight JSONL events for sessions (start/end), turns, and tool calls.
+- Emits lightweight JSONL events for sessions (start/end), turns, tool calls, summaries, and subagent activity.
+- Turn events include: tool counts, duration, phase, background job denials, interrupted flag.
 - Privacy guardrails: no user text, no full commands/outputs; only base command, flags, durations, status, and counts.
 - Transport is local file today; emitter is noop when disabled.
 
@@ -93,16 +99,20 @@ uatu/
 ├── chat_session/
 │   ├── session.py
 │   ├── handlers.py
-│   └── commands.py
+│   ├── commands.py
+│   ├── components.py         # SDK hooks and options builder
+│   └── stats.py              # Session/turn statistics
 ├── tools/
 │   ├── __init__.py
 │   ├── constants.py
+│   ├── sdk_tools.py          # MCP tool definitions (async, parallel)
 │   └── safe_mcp.py
 ├── permissions.py
 ├── allowlist.py
 ├── network_allowlist.py
 ├── network_security.py
 ├── audit.py
+├── telemetry.py              # Local JSONL telemetry emitter
 ├── ui/
 │   ├── approval.py
 │   ├── console.py
@@ -111,7 +121,8 @@ uatu/
 ├── config.py
 └── chat.py (compat wrapper)
 
-tests/                         # ~150 tests
+.claude/skills/               # Filesystem-based agent skills
+tests/                        # ~150 tests
 docs/
 ```
 

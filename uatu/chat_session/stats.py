@@ -21,12 +21,30 @@ class SessionStats:
     last_turn_elapsed_ms: float | None = None
     last_turn_bg_soft_denies: int = 0
     last_turn_bg_hard_denies: int = 0
+    # Enhanced ResultMessage tracking
+    sdk_session_id: str | None = None
+    total_api_duration_ms: int = 0
+    last_turn_api_duration_ms: int = 0
+    total_duration_ms: int = 0
+    last_turn_duration_ms: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
     def update_from_result(self, result_message) -> None:
         """Update stats from a ResultMessage.
 
         Args:
             result_message: ResultMessage from Claude SDK
+
+        ResultMessage fields (from sdk.md):
+            - duration_ms: Total duration in milliseconds
+            - duration_api_ms: API-only duration in milliseconds
+            - is_error: Whether the result is an error
+            - num_turns: Number of internal turns
+            - session_id: SDK session identifier
+            - total_cost_usd: Total cost in USD
+            - usage: Token usage breakdown
+            - result: Final result text (if any)
         """
         # Increment conversation turn (each user message)
         self.conversation_turns += 1
@@ -34,12 +52,25 @@ class SessionStats:
         # Update internal turn count from SDK
         self.internal_turns = result_message.num_turns
 
+        # Track SDK session ID
+        if hasattr(result_message, "session_id") and result_message.session_id:
+            self.sdk_session_id = result_message.session_id
+
         # Update cost
         if result_message.total_cost_usd is not None:
             # Track delta for last turn
             new_cost = result_message.total_cost_usd
             self.last_turn_cost_usd = new_cost - self.total_cost_usd
             self.total_cost_usd = new_cost
+
+        # Update duration tracking
+        if hasattr(result_message, "duration_ms") and result_message.duration_ms:
+            self.last_turn_duration_ms = result_message.duration_ms
+            self.total_duration_ms += result_message.duration_ms
+
+        if hasattr(result_message, "duration_api_ms") and result_message.duration_api_ms:
+            self.last_turn_api_duration_ms = result_message.duration_api_ms
+            self.total_api_duration_ms += result_message.duration_api_ms
 
         # Update token counts from usage dict
         if result_message.usage:
@@ -53,6 +84,12 @@ class SessionStats:
 
             self.total_input_tokens = input_tokens
             self.total_output_tokens = output_tokens
+
+            # Track cache tokens if available
+            if "cache_read_input_tokens" in result_message.usage:
+                self.cache_read_tokens = result_message.usage.get("cache_read_input_tokens", 0)
+            if "cache_creation_input_tokens" in result_message.usage:
+                self.cache_write_tokens = result_message.usage.get("cache_creation_input_tokens", 0)
 
     def format_compact(self) -> str:
         """Format stats as compact one-line display.
@@ -120,3 +157,16 @@ class SessionStats:
         self.last_turn_input_tokens = 0
         self.last_turn_output_tokens = 0
         self.last_turn_cost_usd = 0.0
+        self.last_turn_tool_count = 0
+        self.last_turn_status = "ok"
+        self.last_turn_elapsed_ms = None
+        self.last_turn_bg_soft_denies = 0
+        self.last_turn_bg_hard_denies = 0
+        # Reset enhanced tracking
+        self.sdk_session_id = None
+        self.total_api_duration_ms = 0
+        self.last_turn_api_duration_ms = 0
+        self.total_duration_ms = 0
+        self.last_turn_duration_ms = 0
+        self.cache_read_tokens = 0
+        self.cache_write_tokens = 0

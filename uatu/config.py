@@ -67,12 +67,46 @@ class Settings(BaseSettings):
         description="Path for local JSONL telemetry when enabled",
     )
     uatu_max_background_jobs: int = Field(
-        default=1,
+        default=2,
         description="Max concurrent background Bash jobs",
     )
     uatu_background_queue_size: int = Field(
-        default=1,
+        default=2,
         description="Max queued background Bash jobs beyond the concurrent limit",
+    )
+
+    # Turn limits
+    uatu_max_tools_per_turn: int = Field(
+        default=18,
+        description="Maximum tools allowed per turn before requesting summary",
+    )
+    uatu_max_tools_per_turn_bg: int = Field(
+        default=12,
+        description="Maximum tools per turn when a background job is running",
+    )
+    uatu_max_elapsed_seconds: float = Field(
+        default=120.0,
+        description="Maximum seconds per turn before requesting summary",
+    )
+    uatu_max_bg_polls: int = Field(
+        default=3,
+        description="Maximum BashOutput polls before forcing a summary",
+    )
+
+    # Streaming and output
+    uatu_include_partial_messages: bool = Field(
+        default=True,
+        description="Include partial message streaming events for better UX",
+    )
+    uatu_structured_output: bool = Field(
+        default=False,
+        description="Request structured JSON output from the model",
+    )
+
+    # Session management
+    uatu_session_resume_id: str | None = Field(
+        default=None,
+        description="Session ID to resume (optional)",
     )
 
     # UI Settings
@@ -103,8 +137,8 @@ class Settings(BaseSettings):
 
     # Skills (filesystem-based)
     uatu_enable_skills: bool = Field(
-        default=False,
-        description="If true, enable Claude Skills from filesystem",
+        default=True,
+        description="If true, enable Claude Skills from filesystem (.claude/skills/)",
     )
     uatu_setting_sources: list[str] | None = Field(
         default=None,

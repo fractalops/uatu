@@ -1,7 +1,7 @@
 """Tests for specialized diagnostic agents."""
 
 
-from uatu.agents import get_diagnostic_agents
+from uatu.agents import AGENT_MODELS, get_diagnostic_agents
 from uatu.tools.constants import Tools
 
 
@@ -49,8 +49,9 @@ class TestDiagnosticAgents:
         assert Tools.WEB_FETCH not in cpu_memory_agent.tools
         assert Tools.CHECK_PORT_BINDING not in cpu_memory_agent.tools
 
-        # Check model inheritance
-        assert cpu_memory_agent.model == "inherit"
+        # Check model is correctly set per AGENT_MODELS
+        expected_model = AGENT_MODELS.get("cpu-memory-diagnostics", "inherit")
+        assert cpu_memory_agent.model == expected_model
 
     def test_network_agent_configuration(self):
         """Test network diagnostics agent has correct configuration."""
@@ -115,11 +116,16 @@ class TestDiagnosticAgents:
             assert agent.tools, f"Agent {name} has no tools"
             assert len(agent.tools) >= 2, f"Agent {name} has too few tools"
 
-    def test_all_agents_inherit_model(self):
-        """Test that all agents use model inheritance."""
+    def test_all_agents_have_valid_model(self):
+        """Test that all agents use valid model settings per AGENT_MODELS."""
         agents = get_diagnostic_agents()
+        valid_models = {"sonnet", "opus", "haiku", "inherit"}
         for name, agent in agents.items():
-            assert agent.model == "inherit", f"Agent {name} should inherit model"
+            expected_model = AGENT_MODELS.get(name, "inherit")
+            assert agent.model == expected_model, (
+                f"Agent {name} model mismatch: expected {expected_model}, got {agent.model}"
+            )
+            assert agent.model in valid_models, f"Agent {name} has invalid model: {agent.model}"
 
     def test_agents_have_specialized_tool_access(self):
         """Test that agents have appropriate specialized tool access."""

@@ -1,16 +1,68 @@
-"""Tool definitions using Claude Agent SDK."""
+"""Tool definitions using Claude Agent SDK.
 
+Uses asyncio for non-blocking I/O operations:
+- asyncio.create_subprocess_exec() for shell commands
+- asyncio.gather() for parallel execution
+- asyncio.to_thread() for CPU-bound psutil calls
+"""
+
+import asyncio
 import json
 import os
 import pathlib
 import platform
-import subprocess
 from typing import Any
 
 import psutil
 from claude_agent_sdk import tool
 
 from uatu.capabilities import ToolCapabilities
+from uatu.utils import safe_float, safe_int, safe_str
+
+
+async def _run_subprocess_async(cmd: list[str], timeout: float = 10.0) -> str:
+    """Run a subprocess asynchronously with timeout.
+
+    Uses asyncio.create_subprocess_exec() for non-blocking I/O.
+
+    Args:
+        cmd: Command and arguments
+        timeout: Timeout in seconds
+
+    Returns:
+        stdout output, or empty string on error/timeout
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return stdout.decode().strip()
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return ""
+    except Exception:
+        return ""
+
+
+async def _gather_with_errors(*coros) -> list:
+    """Run coroutines in parallel, capturing exceptions as error dicts.
+
+    Args:
+        *coros: Coroutines to run
+
+    Returns:
+        List of results (or {"error": str} for failed coros)
+    """
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    return [
+        {"error": str(r)} if isinstance(r, Exception) else r
+        for r in results
+    ]
 
 # Initialize capabilities once
 _capabilities = ToolCapabilities.detect()
@@ -44,10 +96,8 @@ async def list_processes(min_cpu_percent: float = 5.0, min_memory_mb: float = 10
         MCP-formatted response with content blocks.
     """
     # Handle potential empty dict or None values from MCP client
-    if isinstance(min_cpu_percent, dict) or min_cpu_percent is None:
-        min_cpu_percent = 5.0
-    if isinstance(min_memory_mb, dict) or min_memory_mb is None:
-        min_memory_mb = 100.0
+    min_cpu_percent = safe_float(min_cpu_percent, 5.0)
+    min_memory_mb = safe_float(min_memory_mb, 100.0)
 
     # Import here to keep logic in existing files
     if platform.system() == "Darwin":
@@ -59,10 +109,7 @@ async def list_processes(min_cpu_percent: float = 5.0, min_memory_mb: float = 10
 
         tool_impl = ListProcesses(_capabilities)
 
-    result = tool_impl.execute(min_cpu_percent=float(min_cpu_percent), min_memory_mb=float(min_memory_mb))
-
-    # Return in MCP format
-    import json
+    result = tool_impl.execute(min_cpu_percent=min_cpu_percent, min_memory_mb=min_memory_mb)
 
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
@@ -94,9 +141,6 @@ async def get_system_info(*args, **kwargs) -> dict[str, Any]:
         tool_impl = GetSystemInfo(_capabilities)
 
     result = tool_impl.execute()
-
-    # Return in MCP format: {"content": [{"type": "text", "text": "..."}]}
-    import json
 
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
@@ -130,9 +174,6 @@ async def get_process_tree(*args, **kwargs) -> dict[str, Any]:
 
     result = tool_impl.execute()
 
-    # Return in MCP format
-    import json
-
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
@@ -157,6 +198,11 @@ async def find_process_by_name(name: str) -> dict[str, Any]:
     Returns:
         MCP-formatted response with content blocks.
     """
+    # Defensive handling for SDK quirks (sometimes passes {} or wrong types)
+    name = safe_str(name, "")
+    if not name:
+        return {"content": [{"type": "text", "text": json.dumps({"error": "name parameter is required"}, indent=2)}]}
+
     if platform.system() == "Darwin":
         from uatu.tools.macos_tools import FindProcessByNameMac
 
@@ -168,9 +214,6 @@ async def find_process_by_name(name: str) -> dict[str, Any]:
 
     result = tool_impl.execute(name=name)
 
-    # Return in MCP format
-    import json
-
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 
 
@@ -180,54 +223,53 @@ async def find_process_by_name(name: str) -> dict[str, Any]:
 
 
 def _expand_path(path: str) -> pathlib.Path:
+    """Expand ~ and resolve path."""
     return pathlib.Path(os.path.expanduser(path)).resolve()
 
 
-def _run_subprocess(cmd: list[str], timeout: float = 10.0) -> str:
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        return ""
-    except Exception:
-        return ""
+async def _scan_directory_sizes_async(path: str, max_depth: int, top_n: int) -> dict[str, Any]:
+    """Scan a single directory for sizes (async).
 
+    Uses asyncio subprocess for non-blocking I/O.
+    Handles macOS protected directories gracefully.
+    """
+    root = _expand_path(path)
 
-@tool(
-    name="get_directory_sizes",
-    description="Summarize directory sizes under a path with bounded depth. Returns top entries by size.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "default": "~", "description": "Root path to analyze"},
-            "max_depth": {"type": "integer", "default": 2, "description": "Maximum depth for du summary"},
-            "top_n": {"type": "integer", "default": 10, "description": "Top N entries to return"},
-        },
-        "required": [],
-    },
-)
-async def get_directory_sizes(path: str = "~", max_depth: int = 2, top_n: int = 10) -> dict[str, Any]:
-    if isinstance(path, dict) or path is None:
-        path = "~"
-    if isinstance(max_depth, dict) or max_depth is None:
-        max_depth = 2
-    if isinstance(top_n, dict) or top_n is None:
-        top_n = 10
-
-    root = _expand_path(str(path))
-    max_depth = max(0, min(int(max_depth), 5))
-    top_n = max(1, min(int(top_n), 50))
+    # Check if path exists and is accessible
+    if not root.exists():
+        return {"root": str(root), "entries": [], "error": f"Path does not exist: {root}"}
 
     is_macos = platform.system() == "Darwin"
     depth_flag = "-d" if is_macos else "--max-depth"
     cmd = ["du", "-h", depth_flag, str(max_depth), str(root)]
-    output = _run_subprocess(cmd, timeout=12.0)
+
+    # Longer timeout for large directories (code dirs can take 30s+)
+    output = await _run_subprocess_async(cmd, timeout=45.0)
+
+    # Detect permission errors (macOS Full Disk Access)
+    if not output or "operation not permitted" in output.lower() or "permission denied" in output.lower():
+        # Try to get at least the total size using a different method
+        try:
+            total_size = await asyncio.to_thread(
+                lambda: sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
+                if root.is_dir() else root.stat().st_size
+            )
+            size_mb = total_size / (1024 * 1024)
+            size_str = f"{size_mb:.1f}MB" if size_mb < 1024 else f"{size_mb/1024:.1f}GB"
+            return {
+                "root": str(root),
+                "entries": [{"size": size_str, "path": str(root)}],
+                "note": "Limited access - macOS requires Full Disk Access for detailed scan. "
+                        "Use Bash 'du' command instead which has terminal permissions.",
+            }
+        except (PermissionError, OSError):
+            return {
+                "root": str(root),
+                "entries": [],
+                "error": f"Permission denied: {root}. macOS protects this directory. "
+                         "Use Bash 'du -sh {root}' which has terminal permissions.",
+            }
+
     entries = []
     for line in output.splitlines():
         parts = line.split("\t")
@@ -235,41 +277,77 @@ async def get_directory_sizes(path: str = "~", max_depth: int = 2, top_n: int = 
             size, entry = parts
             entries.append({"size": size, "path": entry})
     entries = sorted(entries, key=lambda x: x["size"], reverse=True)[:top_n]
-    return {"content": [{"type": "text", "text": json.dumps({"root": str(root), "entries": entries}, indent=2)}]}
+    return {"root": str(root), "entries": entries}
 
 
 @tool(
-    name="find_large_files",
-    description="Find large files under a path with bounded depth and size threshold.",
+    name="get_directory_sizes",
+    description=(
+        "Summarize directory sizes. Accepts single path OR multiple paths "
+        "(comma-separated or array) for PARALLEL scanning. Example: '~/Downloads,~/code,~/me'"
+    ),
     input_schema={
         "type": "object",
         "properties": {
-            "path": {"type": "string", "default": "~", "description": "Root path to search"},
-            "min_size_mb": {"type": "number", "default": 100.0, "description": "Minimum file size in MB"},
-            "max_depth": {"type": "integer", "default": 4, "description": "Maximum search depth"},
-            "top_n": {"type": "integer", "default": 10, "description": "Top N results to return"},
+            "path": {
+                "type": "string",
+                "default": "~",
+                "description": "Path(s) to analyze. Comma-separated for multiple: '~/a,~/b,~/c'",
+            },
+            "paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Alternative: array of paths to scan in parallel",
+            },
+            "max_depth": {"type": "integer", "default": 2, "description": "Maximum depth for du summary"},
+            "top_n": {"type": "integer", "default": 10, "description": "Top N entries per path"},
         },
         "required": [],
     },
 )
-async def find_large_files(
-    path: str = "~", min_size_mb: float = 100.0, max_depth: int = 4, top_n: int = 10
+async def get_directory_sizes(
+    path: str = "~",
+    paths: list[str] | None = None,
+    max_depth: int = 2,
+    top_n: int = 10,
 ) -> dict[str, Any]:
-    if isinstance(path, dict) or path is None:
-        path = "~"
-    if isinstance(min_size_mb, dict) or min_size_mb is None:
-        min_size_mb = 100.0
-    if isinstance(max_depth, dict) or max_depth is None:
-        max_depth = 4
-    if isinstance(top_n, dict) or top_n is None:
-        top_n = 10
+    path = safe_str(path, "~")
+    max_depth = max(0, min(safe_int(max_depth, 2), 5))
+    top_n = max(1, min(safe_int(top_n, 10), 50))
 
-    root = _expand_path(str(path))
-    min_size_mb = max(1.0, float(min_size_mb))
-    max_depth = max(1, min(int(max_depth), 6))
-    top_n = max(1, min(int(top_n), 50))
+    # Build list of paths to scan
+    path_list: list[str] = []
+    if paths and isinstance(paths, list):
+        path_list = [safe_str(p, "") for p in paths if p]
+    elif "," in path:
+        path_list = [p.strip() for p in path.split(",") if p.strip()]
+    else:
+        path_list = [path]
 
-    # Use find with -maxdepth if available
+    # Scan paths in parallel using asyncio.gather()
+    coros = [_scan_directory_sizes_async(p, max_depth, top_n) for p in path_list]
+    results = await _gather_with_errors(*coros)
+
+    # Format output
+    if len(results) == 1:
+        return {"content": [{"type": "text", "text": json.dumps(results[0], indent=2)}]}
+    return {"content": [{"type": "text", "text": json.dumps({"scans": results}, indent=2)}]}
+
+
+async def _find_large_files_async(
+    path: str, min_size_mb: float, max_depth: int, top_n: int
+) -> dict[str, Any]:
+    """Find large files in a single path (async).
+
+    Uses asyncio subprocess for non-blocking I/O.
+    Handles macOS protected directories gracefully.
+    """
+    root = _expand_path(path)
+
+    # Check if path exists
+    if not root.exists():
+        return {"root": str(root), "files": [], "error": f"Path does not exist: {root}"}
+
     find_cmd = [
         "find",
         str(root),
@@ -280,21 +358,89 @@ async def find_large_files(
         "-maxdepth",
         str(max_depth),
     ]
-    output = _run_subprocess(find_cmd, timeout=15.0)
-    files = [line for line in output.splitlines() if line.strip()]
+    # Longer timeout for large directories
+    output = await _run_subprocess_async(find_cmd, timeout=45.0)
+
+    # Detect permission errors
+    if "operation not permitted" in output.lower() or "permission denied" in output.lower():
+        return {
+            "root": str(root),
+            "files": [],
+            "error": f"Permission denied: {root}. macOS protects this directory. "
+                     f"Use Bash 'find {root} -size +{int(min_size_mb)}M' which has terminal permissions.",
+        }
+
+    files = [line for line in output.splitlines() if line.strip() and not line.startswith("find:")]
     files = files[: top_n * 3]  # cap before stat
 
-    # Stat sizes
     results = []
     for fpath in files:
         try:
             p = pathlib.Path(fpath)
-            size_mb = p.stat().st_size / (1024 * 1024)
+            stat = await asyncio.to_thread(p.stat)
+            size_mb = stat.st_size / (1024 * 1024)
             results.append({"path": str(p), "size_mb": round(size_mb, 2)})
         except Exception:
             continue
     results = sorted(results, key=lambda x: x["size_mb"], reverse=True)[:top_n]
-    return {"content": [{"type": "text", "text": json.dumps({"root": str(root), "files": results}, indent=2)}]}
+    return {"root": str(root), "files": results}
+
+
+@tool(
+    name="find_large_files",
+    description=(
+        "Find large files. Accepts single path OR multiple paths "
+        "(comma-separated or array) for PARALLEL scanning. Example: '~/Downloads,~/code'"
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "default": "~",
+                "description": "Path(s) to search. Comma-separated for multiple: '~/a,~/b'",
+            },
+            "paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Alternative: array of paths to scan in parallel",
+            },
+            "min_size_mb": {"type": "number", "default": 100.0, "description": "Minimum file size in MB"},
+            "max_depth": {"type": "integer", "default": 4, "description": "Maximum search depth"},
+            "top_n": {"type": "integer", "default": 10, "description": "Top N results per path"},
+        },
+        "required": [],
+    },
+)
+async def find_large_files(
+    path: str = "~",
+    paths: list[str] | None = None,
+    min_size_mb: float = 100.0,
+    max_depth: int = 4,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    path = safe_str(path, "~")
+    min_size_mb = max(1.0, safe_float(min_size_mb, 100.0))
+    max_depth = max(1, min(safe_int(max_depth, 4), 6))
+    top_n = max(1, min(safe_int(top_n, 10), 50))
+
+    # Build list of paths
+    path_list: list[str] = []
+    if paths and isinstance(paths, list):
+        path_list = [safe_str(p, "") for p in paths if p]
+    elif "," in path:
+        path_list = [p.strip() for p in path.split(",") if p.strip()]
+    else:
+        path_list = [path]
+
+    # Scan paths in parallel using asyncio.gather()
+    coros = [_find_large_files_async(p, min_size_mb, max_depth, top_n) for p in path_list]
+    results = await _gather_with_errors(*coros)
+
+    # Format output
+    if len(results) == 1:
+        return {"content": [{"type": "text", "text": json.dumps(results[0], indent=2)}]}
+    return {"content": [{"type": "text", "text": json.dumps({"scans": results}, indent=2)}]}
 
 
 @tool(
@@ -322,27 +468,19 @@ async def disk_scan_summary(
     top_dirs: int = 10,
     top_files: int = 5,
 ) -> dict[str, Any]:
-    # Defensive handling for SDK quirks (sometimes passes {} or wrong types)
-    if isinstance(path, dict) or path is None:
-        path = "~"
-    if isinstance(max_depth, dict) or max_depth is None:
-        max_depth = 2
-    if isinstance(min_size_mb, dict) or min_size_mb is None:
-        min_size_mb = 200.0
-    if isinstance(top_dirs, dict) or top_dirs is None:
-        top_dirs = 10
-    if isinstance(top_files, dict) or top_files is None:
-        top_files = 5
+    # Normalize inputs using safe utilities
+    path = safe_str(path, "~")
+    max_depth = max(0, min(safe_int(max_depth, 2), 5))
+    min_size_mb = max(10.0, safe_float(min_size_mb, 200.0))
+    top_dirs = max(1, min(safe_int(top_dirs, 10), 50))
+    top_files = max(0, min(safe_int(top_files, 5), 50))
 
-    root = _expand_path(str(path))
-    max_depth = max(0, min(int(max_depth), 5))
-    min_size_mb = max(10.0, float(min_size_mb))
-    top_dirs = max(1, min(int(top_dirs), 50))
-    top_files = max(0, min(int(top_files), 50))
+    root = _expand_path(path)
 
+    # Get disk usage (use to_thread for blocking psutil call)
     usage_payload: dict[str, Any] = {}
     try:
-        usage = psutil.disk_usage(str(root))
+        usage = await asyncio.to_thread(psutil.disk_usage, str(root))
         usage_payload = {
             "total_gb": round(usage.total / (1024**3), 2),
             "used_gb": round(usage.used / (1024**3), 2),
@@ -352,11 +490,33 @@ async def disk_scan_summary(
     except Exception:
         usage_payload = {"error": "disk usage unavailable for path"}
 
+    # Run du and find in parallel using asyncio
     is_macos = platform.system() == "Darwin"
     depth_flag = "-d" if is_macos else "--max-depth"
     du_cmd = ["du", "-k", depth_flag, str(max_depth), str(root)]
-    du_output = _run_subprocess(du_cmd, timeout=12.0)
 
+    find_cmd = [
+        "find",
+        str(root),
+        "-type",
+        "f",
+        "-size",
+        f"+{int(min_size_mb)}M",
+        "-maxdepth",
+        str(max_depth if max_depth > 0 else 1),
+    ] if top_files > 0 else None
+
+    # Run both commands in parallel
+    if find_cmd:
+        du_output, find_output = await asyncio.gather(
+            _run_subprocess_async(du_cmd, timeout=30.0),
+            _run_subprocess_async(find_cmd, timeout=30.0),
+        )
+    else:
+        du_output = await _run_subprocess_async(du_cmd, timeout=30.0)
+        find_output = ""
+
+    # Parse du output
     directories = []
     for line in du_output.splitlines():
         parts = line.strip().split(maxsplit=1)
@@ -366,28 +526,23 @@ async def disk_scan_summary(
             directories.append({"path": entry_path, "size_mb": round(size_kb / 1024, 2)})
     directories = sorted(directories, key=lambda x: x["size_mb"], reverse=True)[:top_dirs]
 
+    # Parse find output and stat files (use to_thread for blocking stat calls)
     large_files = []
-    if top_files > 0:
-        find_cmd = [
-            "find",
-            str(root),
-            "-type",
-            "f",
-            "-size",
-            f"+{int(min_size_mb)}M",
-            "-maxdepth",
-            str(max_depth if max_depth > 0 else 1),
-        ]
-        find_output = _run_subprocess(find_cmd, timeout=12.0)
+    if find_output:
         candidates = [line for line in find_output.splitlines() if line.strip()]
         candidates = candidates[: top_files * 3]
-        for fpath in candidates:
+
+        async def stat_file(fpath: str) -> dict | None:
             try:
                 p = pathlib.Path(fpath)
-                size_mb = p.stat().st_size / (1024 * 1024)
-                large_files.append({"path": str(p), "size_mb": round(size_mb, 2)})
+                stat = await asyncio.to_thread(p.stat)
+                size_mb = stat.st_size / (1024 * 1024)
+                return {"path": str(p), "size_mb": round(size_mb, 2)}
             except Exception:
-                continue
+                return None
+
+        stat_results = await asyncio.gather(*[stat_file(f) for f in candidates])
+        large_files = [r for r in stat_results if r is not None]
         large_files = sorted(large_files, key=lambda x: x["size_mb"], reverse=True)[:top_files]
 
     payload = {
@@ -443,28 +598,34 @@ async def get_connection_summary(*args, **kwargs) -> dict[str, Any]:
     },
 )
 async def get_resource_hogs(top_n: int = 10) -> dict[str, Any]:
-    if isinstance(top_n, dict) or top_n is None:
-        top_n = 10
-    top_n = max(1, min(int(top_n or 10), 30))
+    top_n = max(1, min(safe_int(top_n, 10), 30))
 
-    def _num(val: Any, default: float = 0.0) -> float:
+    # First pass: prime cpu_percent for all processes (interval=None returns cached value)
+    # We need to call it once to establish a baseline
+    for p in psutil.process_iter():
         try:
-            return float(val)
+            p.cpu_percent(interval=None)
         except Exception:
-            return default
+            pass
 
+    # Brief sleep to allow CPU measurement window
+    import asyncio
+    await asyncio.sleep(0.2)
+
+    # Second pass: collect actual CPU percentages
     procs = []
     for p in psutil.process_iter(attrs=["pid", "name", "username"]):
         try:
             info = p.as_dict(attrs=["pid", "name", "username"])
-            info["cpu_percent"] = _num(p.cpu_percent(interval=0.0), 0.0)
+            # Now cpu_percent returns meaningful values
+            info["cpu_percent"] = safe_float(p.cpu_percent(interval=None), 0.0)
             mem = p.memory_info()
-            info["rss_mb"] = round(_num(mem.rss, 0.0) / (1024 * 1024), 2)
+            info["rss_mb"] = round(safe_float(mem.rss, 0.0) / (1024 * 1024), 2)
             procs.append(info)
         except Exception:
             continue
-    procs_by_cpu = sorted(procs, key=lambda x: _num(x.get("cpu_percent", 0), 0.0), reverse=True)[:top_n]
-    procs_by_mem = sorted(procs, key=lambda x: _num(x.get("rss_mb", 0), 0.0), reverse=True)[:top_n]
+    procs_by_cpu = sorted(procs, key=lambda x: safe_float(x.get("cpu_percent", 0), 0.0), reverse=True)[:top_n]
+    procs_by_mem = sorted(procs, key=lambda x: safe_float(x.get("rss_mb", 0), 0.0), reverse=True)[:top_n]
     payload = {"top_cpu": procs_by_cpu, "top_memory": procs_by_mem}
     return {"content": [{"type": "text", "text": json.dumps(payload, indent=2)}]}
 
@@ -548,9 +709,6 @@ async def check_port_binding(port: int) -> dict[str, Any]:
 
     tool_impl = CheckPortBinding(_capabilities)
     result = tool_impl.execute(port=port)
-
-    # Return in MCP format
-    import json
 
     return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
 

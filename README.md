@@ -104,12 +104,20 @@ UATU_READ_ONLY=true                     # true: MCP tools only, false: allow bas
 UATU_REQUIRE_APPROVAL=true              # Require approval before bash execution
 UATU_ALLOW_NETWORK=false                # Allow network access (WebFetch, WebSearch)
 
-# Optional
+# Agent features
 UATU_MODEL=claude-sonnet-4-5-20250929  # Claude model
-UATU_CONSOLE_WIDTH=80                   # Terminal width (80, 0=full, None=auto)
 UATU_ENABLE_SUBAGENTS=true              # Specialized diagnostic agents
+UATU_ENABLE_SKILLS=true                 # Filesystem-based agent skills
+UATU_MAX_BACKGROUND_JOBS=2              # Concurrent background bash jobs
+
+# UI options
+UATU_CONSOLE_WIDTH=80                   # Terminal width (80, 0=full, None=auto)
 UATU_SHOW_TOOL_PREVIEWS=true            # Show tool result previews
 UATU_SHOW_STATS=true                    # Show session token/cost stats
+
+# Telemetry (opt-out)
+UATU_ENABLE_TELEMETRY=true              # Local session telemetry
+UATU_TELEMETRY_PATH=~/.uatu/telemetry.jsonl
 ```
 
 ## Security

@@ -49,11 +49,18 @@ User → Agent → Tool Request → Permission Check → User Approval (if requi
 - `find_process_by_name`: Search for processes
 - `check_port_binding`: Port usage
 - `read_proc_file`: Read from /proc filesystem
+- `get_directory_sizes`: Directory sizes (multi-path parallel)
+- `find_large_files`: Large file discovery (multi-path parallel)
+- `disk_scan_summary`: Quick disk space assessment
+- `get_resource_hogs`: Top CPU/memory consumers (two-pass accuracy)
+- `get_connection_summary`: Network connection overview
 
 **Bash Tool** (requires approval unless allowlisted):
 - Full shell access with permission system
 - Risk detection: credential access, destructive ops, system mods
 - Used when MCP tools insufficient
+- Auto-background for slow disk scans (du/find on large directories)
+- Supports concurrent background jobs (configurable)
 
 **Network Tools** (require domain approval):
 - `WebFetch`: Fetch documentation, check service status

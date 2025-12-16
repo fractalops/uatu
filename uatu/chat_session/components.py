@@ -247,6 +247,9 @@ class SessionComponents:
             # Shape heavy Bash disk scans and dedup df
             if tool_name == Tools.BASH:
                 cmd = str(tool_input.get("command", "")).lower()
+                original_cmd = tool_input.get("command", "")
+                run_in_bg = tool_input.get("run_in_background", False)
+
                 if cmd.startswith("df ") or cmd.strip() == "df -h":
                     if ctx_cache.get("seen_df"):
                         return {
@@ -258,6 +261,7 @@ class SessionComponents:
                             },
                         }
                     ctx_cache["seen_df"] = True
+
                 if "du " in cmd:
                     if "--max-depth" not in cmd and "-d " not in cmd:
                         return {
@@ -277,15 +281,41 @@ class SessionComponents:
                                 "permissionDecisionReason": "Unbounded du output; add head",
                             },
                         }
-                if "find " in cmd and "-size" in cmd and "head" not in cmd:
-                    return {
-                        "systemMessage": "Prefer MCP find_large_files or add head -10 and narrow scope for find -size.",
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "permissionDecision": "deny",
-                            "permissionDecisionReason": "Broad find -size without head",
-                        },
-                    }
+                    # Auto-background slow du scans on large directories
+                    if not run_in_bg and any(p in cmd for p in ["/users", "~/", "/home", "/library"]):
+                        return {
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "updatedInput": {
+                                    **tool_input,
+                                    "command": original_cmd,
+                                    "run_in_background": True,
+                                },
+                            },
+                        }
+
+                if "find " in cmd and "-size" in cmd:
+                    if "head" not in cmd:
+                        return {
+                            "systemMessage": "Prefer MCP find_large_files or add head -10 for find -size.",
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "permissionDecision": "deny",
+                                "permissionDecisionReason": "Broad find -size without head",
+                            },
+                        }
+                    # Auto-background slow find scans
+                    if not run_in_bg and any(p in cmd for p in ["/users", "~/", "/home", "/library"]):
+                        return {
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "updatedInput": {
+                                    **tool_input,
+                                    "command": original_cmd,
+                                    "run_in_background": True,
+                                },
+                            },
+                        }
 
             return {}
 
@@ -300,6 +330,55 @@ class SessionComponents:
                         f"Uatu session started | platform={os_name} | tools_mode={tools_mode} | "
                         f"read_only={settings.uatu_read_only} | prefer MCP and safe-hints over Bash; avoid sudo."
                     ),
+                }
+            }
+
+        async def stop_hook(input_data, tool_use_id, context):
+            """Clean up and emit final summary on stop."""
+            import time
+            telemetry.emit({
+                "event_type": "session_stop",
+                "session_id": session_id,
+                "timestamp": time.time(),
+                "reason": input_data.get("reason", "user_requested"),
+            })
+            # Let the message handler know we're stopping
+            if hasattr(message_handler, "rolling_summary") and message_handler.rolling_summary:
+                console.print("\n[dim cyan]Session summary available via /recover[/dim cyan]")
+            return {}
+
+        async def subagent_stop_hook(input_data, tool_use_id, context):
+            """Track subagent completion for observability."""
+            agent_name = input_data.get("agent_name", "unknown")
+            result = input_data.get("result", {})
+            duration_ms = result.get("duration_ms")
+            total_cost = result.get("total_cost_usd")
+            telemetry.emit({
+                "event_type": "subagent_stop",
+                "session_id": session_id,
+                "agent_name": agent_name,
+                "duration_ms": duration_ms,
+                "cost_usd": total_cost,
+            })
+            return {}
+
+        async def user_prompt_submit_hook(input_data, tool_use_id, context):
+            """Enrich user prompts with context."""
+            import time
+            original_prompt = input_data.get("prompt", "")
+            # Add timestamp for tracing
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            # Optionally add turn context
+            turn_count = message_handler.stats.conversation_turns + 1
+            # Return enriched context (not modifying the prompt, just adding metadata)
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "metadata": {
+                        "timestamp": timestamp,
+                        "turn_number": turn_count,
+                        "prompt_length": len(original_prompt),
+                    }
                 }
             }
 
@@ -324,9 +403,52 @@ class SessionComponents:
                 "PreToolUse": [HookMatcher(hooks=[permission_handler.pre_tool_use_hook, pre_tool_use_shaping])],
                 "PostToolUse": [HookMatcher(hooks=[post_tool_use_hook])],
                 "SessionStart": [HookMatcher(hooks=[session_start_hook])],
+                "Stop": [HookMatcher(hooks=[stop_hook])],
+                "SubagentStop": [HookMatcher(hooks=[subagent_stop_hook])],
+                "UserPromptSubmit": [HookMatcher(hooks=[user_prompt_submit_hook])],
             },
             "stderr": _sdk_stderr,
+            "include_partial_messages": settings.uatu_include_partial_messages,
         }
+
+        # Session resume support
+        if settings.uatu_session_resume_id:
+            sdk_options_dict["resume"] = settings.uatu_session_resume_id
+
+        # Structured output support (JSON schema validation)
+        if settings.uatu_structured_output:
+            sdk_options_dict["output_format"] = {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "conclusion": {
+                            "type": "string",
+                            "description": "One-line summary of the diagnostic finding",
+                        },
+                        "evidence": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Key evidence points with metrics/PIDs/values",
+                        },
+                        "recommendations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Actionable next steps",
+                        },
+                        "severity": {
+                            "type": "string",
+                            "enum": ["critical", "high", "medium", "low", "info"],
+                            "description": "Severity level of the finding",
+                        },
+                        "raw_text": {
+                            "type": "string",
+                            "description": "Additional detailed explanation if needed",
+                        },
+                    },
+                    "required": ["conclusion", "evidence"],
+                },
+            }
 
         # Skills settings: setting_sources + cwd
         if settings.uatu_enable_skills:

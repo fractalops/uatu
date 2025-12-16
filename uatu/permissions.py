@@ -216,7 +216,8 @@ class PermissionHandler:
             else:
                 logger.warning(f"Network command allowed by UATU_ALLOW_NETWORK: {command!r}")
 
-        # Check for suspicious patterns (even if base command is safe)
+        # Check for suspicious patterns - ALWAYS block these, even if approvals disabled
+        suspicious_pattern_found = False
         for pattern in AllowlistManager.SUSPICIOUS_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):
                 logger.warning(f"Suspicious pattern detected in command: {command!r}")
@@ -224,10 +225,15 @@ class PermissionHandler:
                     command=command,
                     pattern=pattern,
                 )
-                # Force user approval - skip allowlist check
+                suspicious_pattern_found = True
                 break
+
+        # If suspicious pattern found, require explicit approval (never auto-allow)
+        if suspicious_pattern_found:
+            # Fall through to approval callback below
+            pass
         else:
-            # No suspicious patterns found - check allowlist first
+            # No suspicious patterns - check allowlist first
             if self.allowlist.is_allowed(command):
                 logger.info(f"Command auto-allowed (allowlisted): {command!r}")
                 self.auditor.log_bash_auto_approved(
@@ -239,6 +245,21 @@ class PermissionHandler:
                         "hookEventName": "PreToolUse",
                         "permissionDecision": "allow",
                         "message": "Command auto-allowed (allowlisted)",
+                    }
+                }
+
+            # Check if approvals are disabled (auto-allow mode) - only for non-suspicious commands
+            if not settings.uatu_require_approval:
+                logger.info(f"Command auto-allowed (approvals disabled): {command!r}")
+                self.auditor.log_bash_auto_approved(
+                    command=command,
+                    description=description,
+                )
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "message": "Command auto-allowed (approvals disabled)",
                     }
                 }
 
@@ -327,13 +348,39 @@ class PermissionHandler:
         if not url:
             # WebSearch uses 'query' instead of 'url'
             query = tool_input.get("query", "")
-            # For WebSearch, we approve based on the query itself
-            # No URL validation needed
+            # For WebSearch, validate the query for suspicious patterns
             if tool_name == "WebSearch":
                 logger.debug(f"WebSearch requested with query: {query!r}")
-                # For now, allow WebSearch without domain checking
-                # Future: Could add search query allowlist
-                return {}  # Allow
+                # Check for suspicious search patterns
+                suspicious_search_patterns = [
+                    r"hack(ing|er)?",
+                    r"crack(ing)?",
+                    r"exploit",
+                    r"malware",
+                    r"bypass.*security",
+                    r"steal.*password",
+                    r"ddos",
+                    r"sql.*injection",
+                ]
+                query_lower = query.lower()
+                for pattern in suspicious_search_patterns:
+                    if re.search(pattern, query_lower):
+                        logger.warning(f"Suspicious WebSearch query blocked: {query!r}")
+                        self.auditor.log_suspicious_pattern(
+                            command=f"WebSearch: {query}",
+                            pattern=pattern,
+                        )
+                        return {
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "permissionDecision": "deny",
+                                "permissionDecisionReason": (
+                                    "Search query contains suspicious pattern; "
+                                    "rephrase to focus on legitimate troubleshooting."
+                                ),
+                            }
+                        }
+                return {}  # Allow safe search queries
 
             logger.warning(f"{tool_name} called without URL")
             return {
@@ -376,6 +423,18 @@ class PermissionHandler:
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "allow",
                     "message": f"Domain '{domain}' is allowlisted",
+                }
+            }
+
+        # Check if approvals are disabled (auto-allow mode)
+        settings = get_settings()
+        if not settings.uatu_require_approval:
+            logger.info(f"Network access auto-allowed (approvals disabled): {url!r}")
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "message": "Network access auto-allowed (approvals disabled)",
                 }
             }
 

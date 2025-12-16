@@ -24,11 +24,13 @@ def temp_config_dir():
 def handler(temp_config_dir, monkeypatch):
     """Create a PermissionHandler with temp allowlist.
 
-    Sets UATU_READ_ONLY=false and UATU_REQUIRE_APPROVAL=false to allow bash commands in tests.
+    Sets UATU_READ_ONLY=false to allow bash commands in tests.
+    Sets UATU_REQUIRE_APPROVAL=true so approval callback is used.
     """
-    # Disable read-only mode and require-approval for tests that need to test bash permission logic
+    # Disable read-only mode for tests that need to test bash permission logic
+    # Keep require-approval enabled so we test the approval flow
     monkeypatch.setenv("UATU_READ_ONLY", "false")
-    monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "false")
+    monkeypatch.setenv("UATU_REQUIRE_APPROVAL", "true")
 
     allowlist = AllowlistManager(config_dir=temp_config_dir)
     return PermissionHandler(allowlist=allowlist)

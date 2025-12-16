@@ -30,6 +30,15 @@ class TurnTelemetry:
     last_text_tool_count: int = 0
     background_poll_count: int = 0
     background_label: str | None = None
+    background_start_ts: float | None = None  # When background job started
+    # Track multiple running tools: tool_use_id -> (name, start_ts)
+    running_tools: dict = None  # type: ignore  # Will be dict[str, tuple[str, float]]
+    # Phase tracking for spinner display
+    phase: str = "thinking"  # thinking, gathering, analyzing, summarizing
+
+    def __post_init__(self):
+        if self.running_tools is None:
+            self.running_tools = {}
 
     def start(self) -> None:
         self.start_ts = time.monotonic()
@@ -37,6 +46,21 @@ class TurnTelemetry:
         self.last_text_tool_count = 0
         self.background_poll_count = 0
         self.background_label = None
+        self.background_start_ts = None
+        self.running_tools = {}
+        self.phase = "thinking"
+
+    def update_phase(self) -> str:
+        """Determine current phase based on activity."""
+        if self.tool_count == 0:
+            self.phase = "thinking"
+        elif self.running_tools:
+            self.phase = "gathering"
+        elif self.tool_count > 0 and self.last_text_tool_count < self.tool_count:
+            self.phase = "analyzing"
+        else:
+            self.phase = "summarizing"
+        return self.phase
 
     def record_tool(self, tool_name: str) -> None:
         self.tool_count += 1
@@ -47,11 +71,139 @@ class TurnTelemetry:
     def record_background_poll(self) -> None:
         self.background_poll_count += 1
 
+    def start_tool(self, tool_id: str, tool_name: str) -> None:
+        """Start tracking a tool execution.
+
+        Args:
+            tool_id: Unique tool_use_id from the SDK
+            tool_name: Human-readable tool name
+        """
+        self.running_tools[tool_id] = (tool_name, time.monotonic())
+
+    def stop_tool(self, tool_id: str | None = None) -> float:
+        """Stop tracking a tool, return elapsed time.
+
+        Args:
+            tool_id: Tool to stop. If None, stops the oldest tool.
+        """
+        if not self.running_tools:
+            return 0.0
+
+        if tool_id and tool_id in self.running_tools:
+            name, start_ts = self.running_tools.pop(tool_id)
+            return time.monotonic() - start_ts
+
+        # Fallback: stop oldest tool if no ID provided
+        if self.running_tools:
+            oldest_id = next(iter(self.running_tools))
+            name, start_ts = self.running_tools.pop(oldest_id)
+            return time.monotonic() - start_ts
+
+        return 0.0
+
+    def running_tools_count(self) -> int:
+        """Get count of currently running tools."""
+        return len(self.running_tools)
+
+    def running_tools_summary(self) -> str:
+        """Get summary of running tools for spinner display."""
+        if not self.running_tools:
+            return ""
+
+        count = len(self.running_tools)
+        if count == 1:
+            # Single tool: show name and elapsed time
+            tool_id, (name, start_ts) = next(iter(self.running_tools.items()))
+            elapsed = time.monotonic() - start_ts
+            return f"{name} ({elapsed:.1f}s)"
+        else:
+            # Multiple tools: show count and max elapsed
+            max_elapsed = max(time.monotonic() - ts for _, ts in self.running_tools.values())
+            return f"{count} tools running ({max_elapsed:.1f}s)"
+
+    # Legacy compatibility
+    @property
+    def current_tool_name(self) -> str | None:
+        """Legacy: return first running tool name."""
+        if self.running_tools:
+            return next(iter(self.running_tools.values()))[0]
+        return None
+
+    def tool_elapsed(self) -> float:
+        """Get max elapsed time across all running tools."""
+        if not self.running_tools:
+            return 0.0
+        return max(time.monotonic() - ts for _, ts in self.running_tools.values())
+
+    def start_background(self, label: str) -> None:
+        """Start tracking a background job."""
+        self.background_label = label
+        self.background_start_ts = time.monotonic()
+
+    def stop_background(self) -> float:
+        """Stop tracking background job, return elapsed time."""
+        elapsed = 0.0
+        if self.background_start_ts:
+            elapsed = time.monotonic() - self.background_start_ts
+        self.background_label = None
+        self.background_start_ts = None
+        return elapsed
+
+    def background_elapsed(self) -> float:
+        """Get elapsed time for current background job."""
+        if self.background_start_ts:
+            return time.monotonic() - self.background_start_ts
+        return 0.0
+
     def reset_after_summary(self) -> None:
         self.tool_count = 0
         self.last_text_tool_count = 0
         self.background_poll_count = 0
         self.background_label = None
+        self.background_start_ts = None
+        self.running_tools = {}
+        self.phase = "thinking"
+
+
+@dataclass
+class BackgroundJob:
+    """Tracks a background Bash job."""
+
+    shell_id: str | None
+    command: str
+    start_time: float
+    status: str = "running"  # running, completed, failed, killed
+    exit_code: int | None = None
+    label: str | None = None
+
+    @classmethod
+    def from_tool_input(cls, tool_input: dict[str, Any]) -> "BackgroundJob":
+        """Create a BackgroundJob from Bash tool input."""
+        command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+        label = command.split("\n", 1)[0][:40] if command else "background"
+        if len(label) < len(command.split("\n", 1)[0]):
+            label += "..."
+        return cls(
+            shell_id=None,  # Will be set when result arrives
+            command=command,
+            start_time=time.monotonic(),
+            label=label,
+        )
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """Time elapsed since job started."""
+        return time.monotonic() - self.start_time
+
+    def mark_completed(self, exit_code: int | None = None) -> None:
+        """Mark job as completed."""
+        self.status = "completed"
+        self.exit_code = exit_code
+
+    def mark_failed(self, exit_code: int | None = None) -> None:
+        """Mark job as failed."""
+        self.status = "failed"
+        self.exit_code = exit_code
 
 
 class MessageHandler:
@@ -89,9 +241,9 @@ class MessageHandler:
         # Track per-tool timing
         self.tool_start_ts: dict[str, float] = {}
         self.tool_meta: dict[str, dict[str, Any]] = {}
-        # Background Bash guard
-        self.background_active: bool = False
-        self.background_queue: list[str] = []
+        # Background Bash job tracking - supports multiple concurrent jobs
+        self.running_background_jobs: dict[str, BackgroundJob] = {}  # shell_id -> job
+        self.background_job_queue: list[BackgroundJob] = []
         self.turn_seen_basics: set[str] = set()
         # Optional prompt refresher (set by ChatSession)
         self.refresh_prompt: callable | None = None
@@ -106,12 +258,12 @@ class MessageHandler:
         # Track tool usage and previews for fallback summaries
         self.tool_usage_log: list[str] = []
         self.tool_result_previews: dict[str, str] = {}
-        # Force wrap-up guard
-        self.max_tools_per_turn: int = 18
-        self.max_tools_per_turn_bg: int = 12
-        self.max_elapsed_seconds: float = 120.0
+        # Force wrap-up guard (from settings)
+        self.max_tools_per_turn: int = self.settings.uatu_max_tools_per_turn
+        self.max_tools_per_turn_bg: int = self.settings.uatu_max_tools_per_turn_bg
+        self.max_elapsed_seconds: float = self.settings.uatu_max_elapsed_seconds
         # Background polling limit for BashOutput
-        self.max_bg_polls: int = 3
+        self.max_bg_polls: int = self.settings.uatu_max_bg_polls
         self.max_background_jobs: int = (
             self.settings.uatu_max_background_jobs
             if hasattr(self.settings, "uatu_max_background_jobs")
@@ -124,6 +276,7 @@ class MessageHandler:
         self.turn_bash_tools: int = 0
         self.turn_mcp_tools: int = 0
         self.turn_bash_disk_tools: int = 0
+        self.turn_skill_invocations: int = 0
         self.bg_soft_denies: int = 0
         self.bg_hard_denies: int = 0
         self.last_tool_end_ts: float | None = None
@@ -150,21 +303,45 @@ class MessageHandler:
                 elapsed = 0.0
                 if telemetry and telemetry.start_ts is not None:
                     elapsed = time.monotonic() - telemetry.start_ts
-                spinner_text = Text("Pondering... ", style="cyan")
-                spinner_text.append(f"{elapsed:0.1f}/{self.max_elapsed_seconds:.0f}s", style="dim")
-                if telemetry:
-                    spinner_text.append(
-                        f" · tools:{telemetry.tool_count}/{self.max_tools_per_turn}", style="dim"
-                    )
+
+                # Update and get current phase
+                phase = telemetry.update_phase() if telemetry else "thinking"
+                phase_display = {
+                    "thinking": "Pondering",
+                    "gathering": "Gathering",
+                    "analyzing": "Analyzing",
+                    "summarizing": "Summarizing",
+                }
+                phase_text = phase_display.get(phase, "Pondering")
+
+                # Build spinner text with phase
+                spinner_text = Text(f"{phase_text}... ", style="cyan")
+                spinner_text.append(f"{elapsed:0.1f}s", style="dim")
+                if telemetry and telemetry.tool_count > 0:
+                    spinner_text.append(f" · {telemetry.tool_count} tools", style="dim")
+
+                # Show running tools with live elapsed time
+                if telemetry and telemetry.running_tools_count() > 0:
+                    summary = telemetry.running_tools_summary()
+                    spinner_text.append("\n", style="dim")
+                    spinner_text.append("  ↳ ", style="dim")
+                    spinner_text.append(summary, style="dim cyan")
+
+                # Show background job on new line
                 if telemetry and telemetry.background_label:
-                    spinner_text.append(f" · bg:{telemetry.background_label}", style="dim")
-                elif telemetry and telemetry.background_poll_count:
-                    spinner_text.append(f" · bg:{telemetry.background_poll_count}", style="dim")
-                # Live tokens/cost are only available at ResultMessage; show placeholder
+                    bg_elapsed = telemetry.background_elapsed()
+                    spinner_text.append("\n", style="dim")
+                    spinner_text.append("  ↳ bg: ", style="dim green")
+                    label = telemetry.background_label[:40]
+                    spinner_text.append(f"{label}", style="dim")
+                    spinner_text.append(f" ({bg_elapsed:.0f}s)", style="dim yellow")
+
+                # Budget remaining (if tracking)
                 if self.settings.uatu_show_stats:
                     if self.stats.max_budget_usd and self.stats.total_cost_usd:
                         remaining = max(self.stats.max_budget_usd - self.stats.total_cost_usd, 0)
-                        spinner_text.append(f" · budget:${remaining:.4f}", style="dim")
+                        spinner_text.append(f" · ${remaining:.4f}", style="dim")
+
                 spinner_obj.text = spinner_text
             if self.refresh_prompt:
                 try:
@@ -264,6 +441,8 @@ class MessageHandler:
                 self.turn_bash_disk_tools += 1
         elif tool_name.startswith("mcp__"):
             self.turn_mcp_tools += 1
+        elif tool_name == "Skill":
+            self.turn_skill_invocations += 1
         self.telemetry_emitter.emit(
             {
                 "event_type": "tool_call",
@@ -312,9 +491,304 @@ class MessageHandler:
         self.last_summary = None
         self.rolling_summary = None
         self.turn_state = TurnTelemetry()
-        self.background_active = False
-        self.background_queue: list[str] = []
+        self.running_background_jobs = {}
+        self.background_job_queue = []
         self.turn_seen_basics = set()
+
+    def _handle_text_block(
+        self,
+        block: Any,
+        response_text: str,
+        spinner: Any,
+    ) -> tuple[str, bool]:
+        """Handle a text content block.
+
+        Args:
+            block: Text block from Claude
+            response_text: Accumulated response text
+            spinner: Live spinner widget (may be None)
+
+        Returns:
+            Tuple of (updated response_text, True if text was processed)
+        """
+        if spinner and spinner.is_started:
+            spinner.stop()
+            # Print header when we start getting text
+            if not response_text:
+                self.console.print()
+                self.console.print("[bold cyan]Uatu:[/bold cyan]")
+                self.console.print()
+
+        # Render each text block, preferring structured layout
+        self.renderer.show_text(block.text)
+        response_text += block.text
+        self.turn_state.record_text()
+        return response_text, True
+
+    def _should_deny_tool_for_background(self, tool_name: str) -> bool:
+        """Check if a tool should be denied due to background job running.
+
+        Strategy:
+        - Always allow BashOutput (polling background jobs)
+        - Always allow MCP tools (no I/O contention with background Bash)
+        - Allow Read/Write/other non-Bash tools
+        - Only soft-deny additional Bash commands to prevent I/O contention
+
+        Args:
+            tool_name: Name of the tool
+
+        Returns:
+            True if the tool should be denied
+        """
+        if not self.running_background_jobs:
+            return False
+
+        # Always allow polling background jobs
+        if tool_name == Tools.BASH_OUTPUT:
+            return False
+
+        # Allow MCP tools - they don't compete for disk I/O
+        if tool_name.startswith("mcp__"):
+            return False
+
+        # Allow non-Bash SDK tools (Read, Write, etc.)
+        if tool_name != Tools.BASH:
+            return False
+
+        # Additional Bash commands - check if we're at capacity
+        # If we have room for more concurrent jobs, don't deny
+        if len(self.running_background_jobs) < self.max_background_jobs:
+            return False
+
+        # At max concurrent jobs - soft deny new Bash to avoid I/O contention
+        if self.bg_soft_denies == 0:
+            self.bg_soft_denies += 1
+            count = len(self.running_background_jobs)
+            self.console.print(f"[dim yellow]  ↳ {count} background job(s) running, queuing...[/dim yellow]")
+        else:
+            self.bg_hard_denies += 1
+        return True
+
+    def _track_background_job(self, tool_name: str, tool_input: dict[str, Any] | None) -> bool:
+        """Track and manage background Bash jobs.
+
+        Supports multiple concurrent background jobs up to max_background_jobs.
+
+        Args:
+            tool_name: Name of the tool
+            tool_input: Tool input parameters
+
+        Returns:
+            True if the tool should be skipped (at max capacity)
+        """
+        if (
+            tool_name != Tools.BASH
+            or not isinstance(tool_input, dict)
+            or not tool_input.get("run_in_background")
+        ):
+            return False
+
+        # Create the job
+        bg_job = BackgroundJob.from_tool_input(tool_input)
+
+        # Check if we're at max concurrent jobs
+        running_count = len(self.running_background_jobs)
+        if running_count >= self.max_background_jobs:
+            # Check if we can queue this job
+            if len(self.background_job_queue) >= self.background_queue_size:
+                self.console.print(
+                    f"[dim yellow]  ! Max background jobs ({self.max_background_jobs} running, "
+                    f"{len(self.background_job_queue)} queued)[/dim yellow]"
+                )
+                return True
+
+            # Queue the job
+            self.background_job_queue.append(bg_job)
+            label = (bg_job.label or "job")[:25]
+            self.console.print(f"[dim cyan]  ~ Queued: {label}[/dim cyan]")
+            return False  # Don't skip - let SDK handle it
+
+        # We can run this job concurrently
+        # Note: We'll assign the shell_id when we get the tool result
+        # For now, track with a placeholder
+        placeholder_id = f"pending_{len(self.running_background_jobs)}"
+        self.running_background_jobs[placeholder_id] = bg_job
+
+        # Update spinner to show background count
+        job_labels = [j.label or "bg" for j in self.running_background_jobs.values()]
+        self.turn_state.start_background(", ".join(job_labels)[:40])
+
+        if running_count > 0:
+            label = bg_job.label or "job"
+            self.console.print(f"[dim green]  + Background #{running_count + 1}: {label}[/dim green]")
+
+        return False
+
+    def _handle_tool_result(
+        self,
+        tool_use_id: str,
+        tool_response: Any,
+        turn_id: str,
+    ) -> None:
+        """Handle a tool result block.
+
+        Args:
+            tool_use_id: ID of the tool use
+            tool_response: Response content from the tool
+            turn_id: Current turn ID
+        """
+        # Look up the tool name from our tracking map
+        tool_name = self.tool_use_map.get(tool_use_id, "unknown")
+
+        # Stop tracking this specific tool for spinner
+        self.turn_state.stop_tool(tool_use_id)
+
+        # Timing: show elapsed if we tracked start
+        elapsed_msg = ""
+        start_ts = self.tool_start_ts.pop(tool_use_id, None)
+        if start_ts:
+            elapsed = time.monotonic() - start_ts
+            elapsed_msg = f" [{elapsed:0.1f}s]"
+
+        # Show tool result preview if enabled
+        if self.settings.uatu_show_tool_previews:
+            preview_str = self.renderer.show_tool_result(tool_name, tool_response)
+            if preview_str:
+                self.tool_result_previews[tool_use_id] = preview_str
+            if elapsed_msg:
+                pretty_name = self.renderer.clean_tool_name(tool_name)
+                msg = f"{pretty_name} finished{elapsed_msg}"
+                self.renderer.status(msg, status="info", dim=True)
+
+        status_label = "ok"
+        if tool_response and "error" in str(tool_response).lower():
+            status_label = "error"
+
+        self._emit_tool_end(
+            turn_id=turn_id,
+            tool_use_id=tool_use_id,
+            tool_name=tool_name,
+            start_ts=start_ts,
+            status=status_label,
+        )
+
+        # Track shell_id when Bash background command starts
+        if tool_name == Tools.BASH and isinstance(tool_response, dict):
+            shell_id = tool_response.get("shellId")
+            if shell_id:
+                # Find a pending job and assign the shell_id
+                for pending_id in list(self.running_background_jobs.keys()):
+                    if pending_id.startswith("pending_"):
+                        job = self.running_background_jobs.pop(pending_id)
+                        job.shell_id = shell_id
+                        self.running_background_jobs[shell_id] = job
+                        break
+
+        # Handle BashOutput result - check if a job completed
+        if tool_name == Tools.BASH_OUTPUT:
+            self.turn_state.record_background_poll()
+            # Check response status
+            is_completed = False
+            if isinstance(tool_response, dict):
+                status = tool_response.get("status", "")
+                is_completed = status in ("completed", "failed")
+            elif isinstance(tool_response, str):
+                is_completed = "completed" in tool_response.lower() or "exit" in tool_response.lower()
+
+            if is_completed and self.running_background_jobs:
+                # Remove one completed job (we don't always know which one)
+                if self.running_background_jobs:
+                    completed_id = next(iter(self.running_background_jobs))
+                    completed_job = self.running_background_jobs.pop(completed_id)
+                    completed_job.mark_completed()
+
+                    # Update spinner with remaining jobs
+                    if self.running_background_jobs:
+                        remaining = [j.label or "bg" for j in self.running_background_jobs.values()]
+                        self.turn_state.background_label = ", ".join(remaining)[:40]
+                        still = len(self.running_background_jobs)
+                        self.console.print(f"[dim green]  ✓ Job done, {still} running[/dim green]")
+                    else:
+                        bg_elapsed = self.turn_state.stop_background()
+                        self.console.print(f"[dim green]  ✓ All background jobs done ({bg_elapsed:.1f}s)[/dim green]")
+
+                # Start next queued job if we have capacity
+                while (
+                    self.background_job_queue
+                    and len(self.running_background_jobs) < self.max_background_jobs
+                ):
+                    next_job = self.background_job_queue.pop(0)
+                    placeholder = f"pending_{len(self.running_background_jobs)}"
+                    self.running_background_jobs[placeholder] = next_job
+                    label = (next_job.label or "job")[:30]
+                    self.console.print(f"[dim cyan]  -> Starting queued: {label}[/dim cyan]")
+
+    def _build_fallback_summary(self) -> str:
+        """Build a fallback summary from tool activity when model returns no text.
+
+        Returns:
+            Fallback summary string
+        """
+        fallback_lines: list[str] = []
+        if self.tool_usage_log:
+            tools_str = ", ".join(self.tool_usage_log[-8:])
+            fallback_lines.append(f"Tools executed: {tools_str}")
+        if self.tool_result_previews:
+            fallback_lines.append("Top results:")
+            for _, preview in list(self.tool_result_previews.items())[-8:]:
+                fallback_lines.append(f"- {preview}")
+        return "\n".join(fallback_lines) if fallback_lines else "No assistant summary returned."
+
+    async def _auto_summary_turn(
+        self,
+        client: ClaudeSDKClient,
+        summary_prompt: str,
+        parent_turn_id: str,
+    ) -> None:
+        """Auto-prompt the model for a summary when a turn ends without one.
+
+        This is a lightweight turn that just asks for text summary, no tools.
+
+        Args:
+            client: Claude SDK client
+            summary_prompt: The prompt asking for summary
+            parent_turn_id: The turn ID that triggered this auto-summary
+        """
+        summary_text = ""
+
+        # Send the summary request first, then receive messages
+        await client.query(summary_prompt)
+
+        # Receive the response
+        async for message in client.receive_messages():
+            if hasattr(message, "content"):
+                for block in message.content:
+                    if hasattr(block, "text"):
+                        # Stream text as it arrives
+                        if not summary_text:
+                            self.console.print()  # Add spacing before summary
+                        summary_text += block.text
+
+            # Check for ResultMessage (turn complete)
+            if isinstance(message, ResultMessage):
+                # Also check if ResultMessage has a result field
+                if hasattr(message, "result") and message.result:
+                    summary_text = message.result
+                break
+
+        # Display the summary
+        if summary_text.strip():
+            self.renderer.show_text(summary_text.strip())
+            self.last_summary = summary_text.strip()
+            if self.rolling_summary:
+                self.rolling_summary = f"{self.rolling_summary}\n\n{summary_text.strip()}"
+            else:
+                self.rolling_summary = summary_text.strip()
+            self._emit_summary_event(parent_turn_id, "auto_summary", summary_text.strip())
+            self.console.print()
+        else:
+            # No text returned even from summary request
+            self.console.print("[dim yellow]  ! No summary available[/dim yellow]")
 
     async def handle_message(self, client: ClaudeSDKClient, user_message: str) -> None:
         """Handle a user message and stream response.
@@ -343,6 +817,7 @@ class MessageHandler:
                 "bash_tools": 0,
                 "mcp_tools": 0,
                 "bash_disk_tools": 0,
+                "skill_invocations": 0,
             },
             )
             for attempt in range(1, attempts + 1):
@@ -355,6 +830,7 @@ class MessageHandler:
                 self.turn_bash_tools = 0
                 self.turn_mcp_tools = 0
                 self.turn_bash_disk_tools = 0
+                self.turn_skill_invocations = 0
                 self.bg_soft_denies = 0
                 self.bg_hard_denies = 0
                 self.last_tool_end_ts = None
@@ -391,7 +867,7 @@ class MessageHandler:
                         )
                     else:
                         # When output is piped/redirected, show a simple status message
-                        self.console.print("[dim cyan]→ Processing...[/dim cyan]", flush=True)
+                        self.console.print("[dim cyan]→ Processing...[/dim cyan]")
 
                     # Send query (context maintained automatically)
                     await client.query(user_message)
@@ -409,14 +885,15 @@ class MessageHandler:
 
                         # Turn guards: too many tools or too long without text -> ask model to summarize
                         elapsed = time.monotonic() - turn_start
-                        tool_cap = self.max_tools_per_turn_bg if self.background_active else self.max_tools_per_turn
+                        has_bg_job = len(self.running_background_jobs) > 0
+                        tool_cap = self.max_tools_per_turn_bg if has_bg_job else self.max_tools_per_turn
                         if (
                             self.turn_state.tool_count >= tool_cap
                             or elapsed >= self.max_elapsed_seconds
                         ) and not response_text:
                             self.renderer.status(
-                                "Collected a lot of data; requesting a summary from the model...",
-                                status="warning",
+                                "Wrapping up...",
+                                status="info",
                                 dim=True,
                             )
                             with contextlib.suppress(Exception):
@@ -437,19 +914,9 @@ class MessageHandler:
                             for block in message.content:
                                 # Text content
                                 if hasattr(block, "text"):
-                                    if spinner and spinner.is_started:
-                                        spinner.stop()
-                                        # Print header when we start getting text
-                                        if not response_text:
-                                            self.console.print()
-                                            self.console.print("[bold cyan]Uatu:[/bold cyan]")
-                                            self.console.print()
-
-                                    # Render each text block, preferring structured layout
-                                    self.renderer.show_text(block.text)
-                                    response_text += block.text
-                                    message_has_text = True
-                                    self.turn_state.record_text()
+                                    response_text, message_has_text = self._handle_text_block(
+                                        block, response_text, spinner
+                                    )
 
                                 # Tool usage (when Claude calls a tool)
                                 elif hasattr(block, "name") and hasattr(block, "input"):
@@ -459,26 +926,12 @@ class MessageHandler:
                                     message_has_tools = True
                                     tool_name = block.name
                                     tool_input = block.input if hasattr(block, "input") else None
-                                    # If background is active, only allow BashOutput; soft-deny others
-                                    # and then hard-deny repeat attempts
-                                    if self.background_active and tool_name != Tools.BASH_OUTPUT:
-                                        if self.bg_soft_denies == 0:
-                                            self.bg_soft_denies += 1
-                                            self.renderer.status(
-                                                "Background job running; poll BashOutput "
-                                                "or summarize before new tools.",
-                                                status="warning",
-                                                dim=True,
-                                            )
-                                        else:
-                                            self.bg_hard_denies += 1
-                                            self.renderer.status(
-                                                "Denying additional tools until background completes.",
-                                                status="error",
-                                                dim=True,
-                                            )
+
+                                    # Check if background job should block this tool
+                                    if self._should_deny_tool_for_background(tool_name):
                                         continue
-                                    # Dedup basics per turn (generic list)
+
+                                    # Track basic disk tools for telemetry (dedup is handled by hook)
                                     basic_tools = {
                                         Tools.DISK_SCAN_SUMMARY,
                                         Tools.GET_DIRECTORY_SIZES,
@@ -486,49 +939,17 @@ class MessageHandler:
                                         "mcp__safe-hints__disk_usage_summary",
                                     }
                                     if tool_name in basic_tools:
-                                        if tool_name in self.turn_seen_basics:
-                                            self.renderer.status(
-                                                "Skipping duplicate basic disk summary this turn.",
-                                                status="info",
-                                                dim=True,
-                                            )
-                                            continue
                                         self.turn_seen_basics.add(tool_name)
+
                                     # Update telemetry
                                     self.turn_state.record_tool(tool_name)
                                     start_ts = time.monotonic()
                                     self.tool_usage_log.append(self.renderer.clean_tool_name(tool_name))
                                     tool_use_id = getattr(block, "id", None)
-                                    # Track background Bash to avoid piling on more heavy scans
-                                    if (
-                                        tool_name == Tools.BASH
-                                        and isinstance(tool_input, dict)
-                                        and tool_input.get("run_in_background")
-                                    ):
-                                        cmd_preview = (
-                                            tool_input.get("command", "")
-                                            if isinstance(tool_input, dict)
-                                            else ""
-                                        )
-                                        if self.background_active:
-                                            self.renderer.status(
-                                                "Background job already running; finish it before starting another.",
-                                                status="warning",
-                                                dim=True,
-                                            )
-                                            continue
-                                        else:
-                                            self.background_active = True
-                                            # Set a concise background label from command
-                                            if cmd_preview:
-                                                cmd_preview = cmd_preview.split("\n", 1)[0]
-                                                if len(cmd_preview) > 40:
-                                                    cmd_preview = cmd_preview[:37] + "..."
-                                                self.turn_state.background_label = cmd_preview
-                                            else:
-                                                self.turn_state.background_label = (
-                                                    self.renderer.clean_tool_name(tool_name)
-                                                )
+
+                                    # Track background Bash job
+                                    if self._track_background_job(tool_name, tool_input):
+                                        continue
                                     self._emit_tool_start(
                                         turn_id=turn_id,
                                         tool_use_id=tool_use_id,
@@ -540,60 +961,22 @@ class MessageHandler:
                                         self.tool_use_map[tool_use_id] = tool_name
                                         self.tool_start_ts[tool_use_id] = start_ts
 
+                                    # Track current tool for spinner display
+                                    clean_name = self.renderer.clean_tool_name(tool_name)
+                                    if tool_use_id:
+                                        self.turn_state.start_tool(tool_use_id, clean_name)
+
                                     # Show tool usage with enhanced display
                                     self.renderer.show_tool_usage(tool_name, tool_input)
 
                                 # Tool result (when tool execution completes)
                                 # These come in UserMessage blocks via receive_messages()
                                 elif hasattr(block, "tool_use_id") and hasattr(block, "content"):
-                                    tool_use_id = block.tool_use_id
-                                    tool_response = block.content
-
-                                    # Look up the tool name from our tracking map
-                                    tool_name = self.tool_use_map.get(tool_use_id, "unknown")
-                                    # Timing: show elapsed if we tracked start
-                                    elapsed_msg = ""
-                                    start_ts = self.tool_start_ts.pop(tool_use_id, None)
-                                    if start_ts:
-                                        elapsed = time.monotonic() - start_ts
-                                        elapsed_msg = f" [{elapsed:0.1f}s]"
-
-                                    # Show tool result preview if enabled
-                                    if self.settings.uatu_show_tool_previews:
-                                        preview_str = self.renderer.show_tool_result(tool_name, tool_response)
-                                        if preview_str:
-                                            self.tool_result_previews[tool_use_id] = preview_str
-                                        if elapsed_msg:
-                                            pretty_name = self.renderer.clean_tool_name(tool_name)
-                                            msg = f"{pretty_name} finished{elapsed_msg}"
-                                            self.renderer.status(msg, status="info", dim=True)
-                                    status_label = "ok"
-                                    if tool_response and "error" in str(tool_response).lower():
-                                        status_label = "error"
-                                    self._emit_tool_end(
+                                    self._handle_tool_result(
+                                        tool_use_id=block.tool_use_id,
+                                        tool_response=block.content,
                                         turn_id=turn_id,
-                                        tool_use_id=tool_use_id,
-                                        tool_name=tool_name,
-                                        start_ts=start_ts,
-                                        status=status_label,
                                     )
-
-                                    # Background polling count
-                                    if tool_name == Tools.BASH_OUTPUT:
-                                        self.turn_state.record_background_poll()
-                                        # Receiving BashOutput means we can consider background complete
-                                        self.background_active = False
-                                        self.turn_state.background_label = None
-                                        # Launch queued job label display only
-                                        # (actual execution would be driven by model)
-                                        if self.background_queue:
-                                            next_label = self.background_queue.pop(0)
-                                            self.turn_state.background_label = next_label
-                                            self.renderer.status(
-                                                f"Background queue progressed: now running queued job ({next_label})",
-                                                status="info",
-                                                dim=True,
-                                            )
 
                         # Restart spinner after tools (waiting for next response)
                         if message_has_tools and not message_has_text:
@@ -611,51 +994,60 @@ class MessageHandler:
                             turn_status = "wrap_up"
                             turn_completed = True
                             self.renderer.status(
-                                "Background command still running; proceeding with available data.",
-                                status="warning",
+                                "Background still running; proceeding.",
+                                status="info",
                                 dim=True,
                             )
                             break
 
-                    # If no ResultMessage arrived (e.g., aborted/timeout), synthesize a fallback summary
+                    # If no ResultMessage arrived (e.g., aborted/timeout), auto-prompt for summary
                     if not result_msg:
-                        self.renderer.status(
-                            "No final summary returned; synthesizing from tool activity.",
-                            status="warning",
-                            dim=True,
+                        self.console.print("[dim cyan]  → Auto-summarizing...[/dim cyan]")
+                        # Clear background state before auto-summary
+                        if self.turn_state.background_label:
+                            self.turn_state.stop_background()
+                        self.running_background_jobs.clear()
+                        self.background_job_queue.clear()
+
+                        # Auto-prompt for summary - recursive call with summary request
+                        summary_prompt = (
+                            "Please provide a brief summary of your findings so far. "
+                            "Focus on key results and any issues discovered. "
+                            "Do not run any more tools - just summarize what you found."
                         )
-                        fallback_lines: list[str] = []
-                        if response_text.strip():
-                            fallback_lines.append(response_text.strip())
-                        if self.tool_usage_log:
-                            tools_str = ", ".join(self.tool_usage_log[-8:])
-                            fallback_lines.append(f"Tools executed: {tools_str}")
-                        if self.tool_result_previews:
-                            fallback_lines.append("Top results:")
-                            for _, preview in list(self.tool_result_previews.items())[-8:]:
-                                fallback_lines.append(f"- {preview}")
-                        fallback_text = (
-                            "\n".join(fallback_lines)
-                            if fallback_lines
-                            else "No assistant summary returned."
-                        )
-                        self.renderer.show_text(fallback_text)
-                        self.last_summary = fallback_text
-                        if self.rolling_summary:
-                            self.rolling_summary = f"{self.rolling_summary}\n\n{fallback_text}"
-                        else:
-                            self.rolling_summary = fallback_text
-                        self._emit_summary_event(turn_id, "fallback_no_result", fallback_text)
-                        # Skip normal stats update since we lack a ResultMessage
-                        turn_status = "fallback"
-                        turn_completed = True
-                        self.background_active = False
-                        self.background_queue.clear()
-                        self.turn_state.background_label = None
-                        return
+                        try:
+                            await self._auto_summary_turn(client, summary_prompt, turn_id)
+                            turn_status = "auto_summary"
+                            turn_completed = True
+                            return
+                        except Exception:
+                            # If auto-summary fails, fall back to synthetic summary
+                            self.console.print("[dim yellow]  ! Summary unavailable[/dim yellow]")
+                            fallback_lines: list[str] = ["---", "**Activity Summary**:"]
+                            if self.tool_usage_log:
+                                recent = self.tool_usage_log[-6:]
+                                fallback_lines.append(f"• Ran {len(self.tool_usage_log)} tools: {', '.join(recent)}")
+                            if self.tool_result_previews:
+                                fallback_lines.append("• Key results:")
+                                for _, preview in list(self.tool_result_previews.items())[-4:]:
+                                    clean_preview = preview.replace("✓ ", "").strip()[:80]
+                                    if clean_preview:
+                                        fallback_lines.append(f"  - {clean_preview}")
+                            fallback_text = "\n".join(fallback_lines)
+                            self.renderer.show_text(fallback_text)
+                            self.last_summary = fallback_text
+                            self._emit_summary_event(turn_id, "fallback_no_result", fallback_text)
+                            turn_status = "fallback"
+                            turn_completed = True
+                            return
 
                     # Update stats from result message
                     self.stats.update_from_result(result_msg)
+
+                    # Check if ResultMessage has a result field (final text)
+                    if hasattr(result_msg, "result") and result_msg.result and not response_text.strip():
+                        response_text = result_msg.result
+
                     # Capture last summary text for recovery and update rolling summary
                     if response_text.strip():
                         summary_text = response_text.strip()
@@ -670,11 +1062,43 @@ class MessageHandler:
                     # Show updated stats after completion
                     self._print_stats_line()
 
-                    # Display closing and stats (text was already streamed)
-                    if response_text:
+                    # Display closing and stats
+                    # Check if turn ended with tools (no final text summary)
+                    tools_after_text = (
+                        self.turn_state.tool_count > self.turn_state.last_text_tool_count
+                    )
+
+                    if response_text and not tools_after_text:
+                        # Model provided final text - just add spacing
                         self.console.print()
+                    elif response_text and tools_after_text:
+                        # Model ran tools after last text - auto-prompt for summary
+                        self.console.print("[dim cyan]  -> Requesting summary...[/dim cyan]")
+                        try:
+                            await self._auto_summary_turn(
+                                client,
+                                "Please provide a brief summary of your findings so far. "
+                                "What did you discover? What are the key results? "
+                                "Do not run any more tools - just summarize what we learned.",
+                                turn_id,
+                            )
+                            self._emit_summary_event(turn_id, "auto_summary_after_tools", self.last_summary or "")
+                        except Exception:
+                            # Fallback if auto-summary fails
+                            closing_lines = ["---", "**Analysis Summary**:"]
+                            if self.tool_usage_log:
+                                recent_tools = self.tool_usage_log[-5:]
+                                closing_lines.append(f"• Tools used: {', '.join(recent_tools)}")
+                            if self.tool_result_previews:
+                                closing_lines.append("• Key findings:")
+                                for _, preview in list(self.tool_result_previews.items())[-3:]:
+                                    closing_lines.append(f"  - {preview}")
+                            closing_lines.append("\n*Continue with follow-up questions for deeper analysis.*")
+                            closing_text = "\n".join(closing_lines)
+                            self.renderer.show_text(closing_text)
+                            self._emit_summary_event(turn_id, "closing_after_tools", closing_text)
                     else:
-                        # Build a fallback summary if model returned no text
+                        # No text at all - build full fallback summary
                         fallback_lines: list[str] = []
                         if self.tool_usage_log:
                             tools_str = ", ".join(self.tool_usage_log[-5:])
@@ -710,9 +1134,7 @@ class MessageHandler:
                         turn_completed = True
                         return
                     if ("concurrency" in msg or "tool use" in msg) and attempt < attempts:
-                        self.renderer.status(
-                            "Retrying after transient tool concurrency error...", status="warning", dim=True
-                        )
+                        self.console.print("[dim yellow]  ~ Retrying...[/dim yellow]")
                         await asyncio.sleep(0.5)
                         continue
                     self.renderer.error(str(e))
@@ -741,9 +1163,10 @@ class MessageHandler:
                         self.console.print()
                     if turn_completed:
                         # Clear background state at end of turn
-                        self.background_active = False
-                        self.background_queue.clear()
-                        self.turn_state.background_label = None
+                        if self.turn_state.background_label:
+                            self.turn_state.stop_background()
+                        self.running_background_jobs.clear()
+                        self.background_job_queue.clear()
                     if turn_completed:
                         elapsed_ms = None
                         if self.turn_state.start_ts:
@@ -758,6 +1181,7 @@ class MessageHandler:
                                 "bash_tools": self.turn_bash_tools,
                                 "mcp_tools": self.turn_mcp_tools,
                                 "bash_disk_tools": self.turn_bash_disk_tools,
+                                "skill_invocations": self.turn_skill_invocations,
                                 "bg_soft_denies": self.bg_soft_denies,
                                 "bg_hard_denies": self.bg_hard_denies,
                             },

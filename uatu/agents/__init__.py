@@ -2,11 +2,27 @@
 
 This module provides domain-specific subagents that handle different categories
 of system diagnostics. Each agent has focused expertise and only access to relevant tools.
+
+Model selection strategy:
+- "haiku" for quick system checks (fast, cheap)
+- "sonnet" for standard diagnostics (default)
+- "inherit" to use the parent model
 """
+
+from typing import Literal
 
 from claude_agent_sdk import AgentDefinition
 
 from uatu.tools.constants import Tools
+
+# Model assignment for each agent type
+# Using haiku for simple checks to optimize cost/speed
+AGENT_MODELS: dict[str, Literal["sonnet", "opus", "haiku", "inherit"]] = {
+    "cpu-memory-diagnostics": "haiku",  # Quick process/memory checks
+    "network-diagnostics": "inherit",   # May need deeper analysis
+    "io-diagnostics": "inherit",        # May need deeper analysis
+    "disk-space-diagnostics": "haiku",  # Quick disk space checks
+}
 
 
 def get_diagnostic_agents() -> dict[str, AgentDefinition]:
@@ -144,7 +160,7 @@ Memory severity:
             Tools.READ_PROC_FILE,
             Tools.BASH,
         ],
-        model="inherit",
+        model=AGENT_MODELS.get("cpu-memory-diagnostics", "inherit"),
     )
 
 
@@ -241,7 +257,7 @@ Remember: Not all network issues are leaks. Focus on:
             Tools.BASH,
             Tools.WEB_FETCH,
         ],
-        model="inherit",
+        model=AGENT_MODELS.get("network-diagnostics", "inherit"),
     )
 
 
@@ -341,7 +357,7 @@ Remember: I/O issues can look like CPU issues (high load). The key is:
             Tools.READ_PROC_FILE,
             Tools.BASH,
         ],
-        model="inherit",
+        model=AGENT_MODELS.get("io-diagnostics", "inherit"),
     )
 
 
@@ -395,8 +411,8 @@ def _create_disk_space_agent() -> AgentDefinition:
             Tools.FIND_LARGE_FILES,
             Tools.BASH,
         ],
-        model="inherit",
+        model=AGENT_MODELS.get("disk-space-diagnostics", "inherit"),
     )
 
 
-__all__ = ["get_diagnostic_agents"]
+__all__ = ["get_diagnostic_agents", "AGENT_MODELS"]
